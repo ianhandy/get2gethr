@@ -15,8 +15,13 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Group Scheduler",
-  description: "Find a time that works for everyone",
+  title: "get2gethr — Find the Perfect Time to Meet",
+  description: "Automated group scheduling. Connect calendars, find common availability, confirm a time — no back-and-forth.",
+  openGraph: {
+    title: "get2gethr",
+    description: "Automated group scheduling. Connect calendars, find common availability, confirm a time.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -36,8 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               className="font-display text-xl font-bold transition-colors"
               style={{ color: "var(--color-primary)" }}
             >
-              Group{" "}
-              <span style={{ color: "var(--color-accent-a)" }}>Scheduler</span>
+              get2<span style={{ color: "var(--color-accent-a)" }}>gethr</span>
             </a>
           </div>
         </header>
