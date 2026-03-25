@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, ensureMigrated } from "@/lib/db";
 import { events, participants, proposedSlots } from "@/lib/db/schema";
 
 
@@ -10,6 +10,7 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
+    await ensureMigrated();
     const event = await db.query.events.findFirst({
       where: eq(events.id, id),
     });

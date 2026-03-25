@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "@/lib/db";
+import { db, ensureMigrated } from "@/lib/db";
 import { events, participants } from "@/lib/db/schema";
 import { sendInviteEmail } from "@/lib/email";
 
@@ -23,6 +23,7 @@ const CreateEventSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    await ensureMigrated();
     const body = await req.json();
     const data = CreateEventSchema.parse(body);
 

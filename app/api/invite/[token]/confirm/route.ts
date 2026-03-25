@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "@/lib/db";
+import { db, ensureMigrated } from "@/lib/db";
 import {
   participants,
   proposedSlots,
@@ -21,6 +21,7 @@ export async function POST(
 ) {
   const { token } = await params;
   try {
+    await ensureMigrated();
     const body = await req.json();
     const { response } = ConfirmSchema.parse(body);
 

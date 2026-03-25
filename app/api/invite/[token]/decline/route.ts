@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, ensureMigrated } from "@/lib/db";
 import { participants } from "@/lib/db/schema";
 import { checkAndAdvanceEvent } from "@/lib/scheduler";
 
@@ -11,6 +11,7 @@ export async function POST(
 ) {
   const { token } = await params;
   try {
+    await ensureMigrated();
     const participant = await db.query.participants.findFirst({
       where: eq(participants.inviteToken, token),
     });
