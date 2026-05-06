@@ -30,13 +30,37 @@ struct ParticipantChipField: View {
             }
 
             // Input
-            TextField("Add email address", text: $currentInput)
-                .textContentType(.emailAddress)
-                .keyboardType(.emailAddress)
-                .autocapitalization(.none)
-                .focused($isFocused)
-                .onSubmit { addEmail() }
-                .font(.subheadline)
+            HStack(spacing: 8) {
+                TextField("Add email address", text: $currentInput)
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .autocapitalization(.none)
+                    .focused($isFocused)
+                    .onSubmit { addEmail() }
+                    .onChange(of: currentInput) { _, newValue in
+                        // Add email on comma or space
+                        if newValue.last == "," || newValue.last == " " {
+                            currentInput = String(newValue.dropLast())
+                            addEmail()
+                        }
+                    }
+                    .font(.subheadline)
+
+                if !currentInput.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button {
+                        addEmail()
+                    } label: {
+                        Text("Add")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Theme.accentA)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
         }
     }
 

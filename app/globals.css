@@ -32,6 +32,20 @@ body {
   outline-offset: 2px;
 }
 
+/* Ensure form inputs and selects are always visible */
+input,
+textarea,
+select {
+  background-color: var(--color-surface);
+  color: var(--color-primary);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-muted);
+  opacity: 1;
+}
+
 /* Styled date input */
 input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0.5;

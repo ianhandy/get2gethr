@@ -5,6 +5,7 @@ struct InviteView: View {
     let token: String
 
     @State private var invite: InviteResponse?
+    @State private var currentSlot: SlotData?
     @State private var isLoading = true
     @State private var error: String?
     @State private var isDeclining = false
@@ -62,7 +63,9 @@ struct InviteView: View {
                 .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
 
                 // Status / Actions
-                if invite.participant.status == .joined {
+                if invite.participant.status == .joined, let slot = currentSlot {
+                    SlotConfirmView(token: token, slot: slot)
+                } else if invite.participant.status == .joined {
                     joinedState()
                 } else if invite.participant.status == .declined || hasResponded {
                     declinedState()
@@ -112,16 +115,17 @@ struct InviteView: View {
     @ViewBuilder
     private func joinedState() -> some View {
         VStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: "clock.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(Theme.accentC)
-            Text("You're In!")
+                .foregroundStyle(Theme.accentB)
+            Text("No Time Proposed Yet")
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundStyle(Theme.primary)
-            Text("We'll notify you when a time is proposed.")
+            Text("Still waiting for everyone to respond. You'll receive an email when it's time to confirm.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.muted)
+                .multilineTextAlignment(.center)
         }
         .padding(.vertical, 20)
     }
@@ -171,8 +175,15 @@ struct InviteView: View {
     private func load() async {
         isLoading = true
         do {
-            invite = try await APIClient.shared.getInvite(token: token)
+            let inviteData = try await APIClient.shared.getInvite(token: token)
+            invite = inviteData
             error = nil
+
+            // If joined, check for a proposed slot to confirm
+            if inviteData.participant.status == .joined {
+                let eventDetail = try await APIClient.shared.getEvent(id: inviteData.event.id)
+                currentSlot = eventDetail.currentSlot
+            }
         } catch {
             self.error = error.localizedDescription
         }
