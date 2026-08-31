@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureMigrated } from "@/lib/db";
-import { handleCallback, legacyGoogleCallbackUrl } from "@/lib/calendar-connect";
+import { callbackUrl, handleCallback } from "@/lib/calendar-connect";
 import { baseUrl } from "@/lib/email";
 
 /**
- * Legacy Google callback.
+ * Completes a calendar connection.
  *
- * This path is already registered as an authorized redirect URI in the Google
- * Cloud console, so it keeps working rather than requiring a console change to
- * deploy. New brokers register `/api/calendar/callback`; both funnel into the
- * same provider-neutral handler.
+ * The redirect target always comes from the single-use state row, never from a
+ * query parameter, so this cannot be turned into an open redirect.
  */
 export async function GET(req: NextRequest) {
   await ensureMigrated();
@@ -19,7 +17,8 @@ export async function GET(req: NextRequest) {
     code: params.get("code"),
     state: params.get("state"),
     error: params.get("error"),
-    redirectUri: legacyGoogleCallbackUrl(),
+    // Must match the URI the authorization request used, exactly.
+    redirectUri: callbackUrl(),
   });
 
   const destination = outcome.redirectTo.startsWith("/")

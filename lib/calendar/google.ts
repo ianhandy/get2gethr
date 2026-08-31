@@ -12,6 +12,7 @@ import {
   type CalendarEventRequest,
   type CalendarEventResult,
   type CalendarGrant,
+  type CalendarProviderId,
   type CalendarSummary,
   type FreeBusyRequest,
 } from "./types";
@@ -96,7 +97,7 @@ function translateError(error: unknown): never {
 export class GoogleCalendarBroker implements CalendarBroker {
   readonly id = "google" as const;
   readonly displayName = "Google Calendar";
-  readonly supportedProviders = ["google"] as const satisfies readonly ["google"];
+  readonly supportedProviders: CalendarProviderId[] = ["google"];
 
   isConfigured(): boolean {
     return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);

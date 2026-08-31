@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, ensureMigrated } from "@/lib/db";
-import { participants } from "@/lib/db/schema";
-
+import { proposedSlots } from "@/lib/db/schema";
+import {
+  AuthorizationError,
+  authorizeInvite,
+  eventViewFor,
+} from "@/lib/authorization";
+import { advanceEvent, loadEventContext } from "@/lib/scheduler";
+import { supportedProviders } from "@/lib/calendar";
 
 export async function GET(
   _req: NextRequest,
@@ -11,42 +17,50 @@ export async function GET(
   const { token } = await params;
   try {
     await ensureMigrated();
-    const participant = await db.query.participants.findFirst({
-      where: eq(participants.inviteToken, token),
-    });
-    if (!participant) {
-      return NextResponse.json({ error: "Invalid invite token" }, { status: 404 });
-    }
+    const audience = await authorizeInvite(token);
+    const eventId = audience.event.id;
 
-    const event = await db.query.events.findFirst({
-      where: (e, { eq: deq }) => deq(e.id, participant.eventId),
+    // Loading an invitation is a cheap, safe moment to nudge an event that got
+    // stuck — for instance because a side effect failed after the last
+    // participant joined. `advanceEvent` is idempotent, so this cannot
+    // double-act.
+    await advanceEvent(eventId).catch((error) => {
+      console.error("advanceEvent from invite view failed:", error);
     });
-    if (!event) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 });
-    }
+
+    const context = await loadEventContext(eventId);
+    if (!context) throw new AuthorizationError(404, "Invitation not found");
+
+    const currentSlot = await db.query.proposedSlots.findFirst({
+      where: and(
+        eq(proposedSlots.eventId, eventId),
+        eq(proposedSlots.status, "proposed")
+      ),
+    });
+    const confirmedSlot = context.event.confirmedSlotId
+      ? ((await db.query.proposedSlots.findFirst({
+          where: eq(proposedSlots.id, context.event.confirmedSlotId),
+        })) ?? null)
+      : null;
+
+    const view = eventViewFor(audience, {
+      event: context.event,
+      participants: context.participants,
+      connections: context.connections,
+      currentSlot: currentSlot ?? null,
+      confirmedSlot,
+    });
 
     return NextResponse.json({
-      participant: {
-        id: participant.id,
-        email: participant.email,
-        name: participant.name,
-        status: participant.status,
-      },
-      event: {
-        id: event.id,
-        title: event.title,
-        description: event.description,
-        initiatorName: event.initiatorName,
-        initiatorEmail: event.initiatorEmail,
-        dateRangeStart: event.dateRangeStart,
-        dateRangeEnd: event.dateRangeEnd,
-        durationMinutes: event.durationMinutes,
-        timezone: event.timezone,
-        status: event.status,
-      },
+      ...view,
+      // The invite page says "Connect calendar", not "Connect Google Calendar".
+      providers: supportedProviders(),
     });
-  } catch (err) {
-    console.error("GET /api/invite/[token] error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("GET /api/invite/[token] error:", error);
+    return NextResponse.json({ error: "Something went wrong." }, { status: 500 });
   }
 }

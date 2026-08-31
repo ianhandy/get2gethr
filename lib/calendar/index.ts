@@ -30,16 +30,16 @@ export function __setBrokerForTesting(
 }
 
 export function getBroker(id: BrokerId): CalendarBroker {
-  let broker = registry.get(id);
-  if (!broker) {
-    broker =
-      id === "cronofy"
-        ? new CronofyBroker()
-        : id === "fake"
-          ? new FakeCalendarBroker()
-          : new GoogleCalendarBroker();
-    registry.set(id, broker);
-  }
+  const existing = registry.get(id);
+  if (existing) return existing;
+
+  const broker: CalendarBroker =
+    id === "cronofy"
+      ? new CronofyBroker()
+      : id === "fake"
+        ? new FakeCalendarBroker()
+        : new GoogleCalendarBroker();
+  registry.set(id, broker);
   return broker;
 }
 
