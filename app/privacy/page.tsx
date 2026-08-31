@@ -1,0 +1,124 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Privacy — get2gethr",
+  description: "What get2gethr collects, why, and how to have it deleted.",
+};
+
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@get2gethr.app";
+
+/**
+ * Written to match what the code actually does. App Store review and the
+ * OAuth consent screen both require a reachable, accurate policy URL, and an
+ * aspirational one is worse than none.
+ */
+export default function PrivacyPage() {
+  return (
+    <article className="prose-get2gethr space-y-6">
+      <h1 className="font-display text-3xl font-bold" style={{ color: "var(--color-primary)" }}>
+        Privacy
+      </h1>
+      <p style={{ color: "var(--color-muted)" }}>
+        get2gethr finds a meeting time that works for a group. To do that it needs to know
+        when people are busy — and nothing else.
+      </p>
+
+      <Section title="What we collect">
+        <ul className="list-disc space-y-2 pl-5">
+          <li>
+            <strong>Event details you enter:</strong> title, optional description, date
+            window, duration, working hours, and timezone.
+          </li>
+          <li>
+            <strong>Email addresses:</strong> yours as organizer, and the ones you invite,
+            so we can send invitations and calendar invites.
+          </li>
+          <li>
+            <strong>Calendar busy times:</strong> the start and end times of blocks when a
+            connected calendar is busy. We do not read event titles, guests, locations,
+            attachments, or notes.
+          </li>
+          <li>
+            <strong>Calendar connection metadata:</strong> which provider and account is
+            connected, which calendars contribute availability, and which calendar the
+            confirmed meeting is written to.
+          </li>
+          <li>
+            <strong>Operational data:</strong> email delivery outcomes, and a one-way hash
+            of the network address that created an event, used only for rate limiting.
+            The address itself is never stored.
+          </li>
+        </ul>
+      </Section>
+
+      <Section title="What we do not collect">
+        <ul className="list-disc space-y-2 pl-5">
+          <li>The contents, titles, or attendees of your existing calendar events.</li>
+          <li>Contacts, files, location, or advertising identifiers.</li>
+          <li>Anything used for advertising or sold to anyone.</li>
+        </ul>
+      </Section>
+
+      <Section title="Who else is involved">
+        <p>
+          Meetings are read from and written to your calendar provider — Google,
+          Microsoft, Apple, or Exchange — with your explicit authorization, which you can
+          revoke at any time from that provider&rsquo;s account settings. Email is
+          delivered through Resend. Data is stored in Turso. Each of these processes data
+          only to provide the service.
+        </p>
+      </Section>
+
+      <Section title="How long we keep it">
+        <p>
+          Event data, participant addresses, and calendar connections are kept while an
+          event is active and for 90 days afterwards, then deleted. Disconnecting a
+          calendar removes its stored authorization immediately and revokes it upstream.
+        </p>
+      </Section>
+
+      <Section title="Deleting your data">
+        <p>
+          Cancelling an event from the organizer page stops all processing for it. To have
+          an event and its associated data deleted outright, email{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline" style={{ color: "var(--color-accent-a)" }}>
+            {SUPPORT_EMAIL}
+          </a>{" "}
+          from the organizer address, or from any invited address to remove yourself. We
+          action deletion requests within 30 days.
+        </p>
+      </Section>
+
+      <Section title="Security">
+        <p>
+          Calendar authorizations are encrypted at rest with authenticated encryption.
+          Invitation links are unguessable capabilities; the organizer&rsquo;s management
+          view requires a separate credential that is never included in an invitation.
+        </p>
+      </Section>
+
+      <Section title="Contact">
+        <p>
+          Questions about any of this go to{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline" style={{ color: "var(--color-accent-a)" }}>
+            {SUPPORT_EMAIL}
+          </a>
+          .
+        </p>
+      </Section>
+    </article>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="font-display text-xl font-bold" style={{ color: "var(--color-primary)" }}>
+        {title}
+      </h2>
+      <div className="text-sm leading-relaxed" style={{ color: "var(--color-muted)" }}>
+        {children}
+      </div>
+    </section>
+  );
+}

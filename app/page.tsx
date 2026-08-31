@@ -1,90 +1,146 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import ClockPicker from "@/components/ClockPicker";
+import { motion, useReducedMotion } from "framer-motion";
 import ParticipantChips from "@/components/ParticipantChip";
+import TimeField from "@/components/TimeField";
+import TimezoneField from "@/components/TimezoneField";
 import FlyAwayCalendar from "@/components/FlyAwayCalendar";
 
-const TIMEZONES = [
-  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-  "America/Toronto", "America/Vancouver", "Europe/London", "Europe/Paris",
-  "Europe/Berlin", "Asia/Tokyo", "Asia/Shanghai", "Asia/Kolkata",
-  "Australia/Sydney", "Pacific/Auckland",
-];
+const DURATIONS = [15, 30, 45, 60, 90, 120] as const;
 
-const cardVariants = {
-  hidden: { opacity: 0, y: 24 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.08, duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-  }),
-};
+function durationLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`;
+  if (minutes === 60) return "1 hour";
+  const hours = minutes / 60;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours`;
+}
+
+/** Today in the browser's timezone, as YYYY-MM-DD. */
+function todayLocal(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+interface FieldError {
+  field: string;
+  message: string;
+}
 
 export default function CreateEventPage() {
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
+
   const [flyAway, setFlyAway] = useState(false);
-  const [pendingEventId, setPendingEventId] = useState<string | null>(null);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [initiatorName, setInitiatorName] = useState("");
-  const [initiatorEmail, setInitiatorEmail] = useState("");
-  const [dateStart, setDateStart] = useState("");
-  const [dateEnd, setDateEnd] = useState("");
+  const [organizerName, setOrganizerName] = useState("");
+  const [organizerEmail, setOrganizerEmail] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [duration, setDuration] = useState(60);
-  const [whStart, setWhStart] = useState("09:00");
-  const [whEnd, setWhEnd] = useState("17:00");
-  const [timezone, setTimezone] = useState(
-    typeof Intl !== "undefined"
-      ? Intl.DateTimeFormat().resolvedOptions().timeZone
-      : "America/New_York"
-  );
+  const [workingStart, setWorkingStart] = useState("09:00");
+  const [workingEnd, setWorkingEnd] = useState("17:00");
+  const [timezone, setTimezone] = useState(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  });
   const [excludeWeekends, setExcludeWeekends] = useState(true);
   const [participantEmails, setParticipantEmails] = useState<string[]>([]);
+  const [website, setWebsite] = useState(""); // honeypot
+
+  // A stable key means a retried submission cannot create a second event. It
+  // is minted on first submit rather than during render, because generating it
+  // during render would produce a different value on every re-render.
+  const idempotencyKey = useRef<string | null>(null);
+
+  const titleId = useId();
+  const descriptionId = useId();
+  const durationId = useId();
+  const startId = useId();
+  const endId = useId();
+  const nameId = useId();
+  const emailId = useId();
+  const participantsLabelId = useId();
+  const errorId = useId();
 
   const handleFlyAwayComplete = useCallback(() => {
-    if (pendingEventId) router.push(`/events/${pendingEventId}`);
-  }, [pendingEventId, router]);
+    if (pendingUrl) router.push(pendingUrl);
+  }, [pendingUrl, router]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function errorFor(field: string): string | undefined {
+    return fieldErrors.find((entry) => entry.field === field)?.message;
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     setError(null);
+    setFieldErrors([]);
 
     if (participantEmails.length === 0) {
-      setError("Add at least one participant email (press Enter after each).");
+      setError("Add at least one person to invite.");
       return;
     }
 
-    const startMs = Math.floor(new Date(dateStart).getTime() / 1000);
-    const endMs = Math.floor(new Date(dateEnd).getTime() / 1000);
-    if (endMs <= startMs) { setError("End date must be after start date."); return; }
-
     setLoading(true);
+    idempotencyKey.current ??=
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     try {
-      const res = await fetch("/api/events", {
+      const response = await fetch("/api/events", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey.current,
+        },
         body: JSON.stringify({
-          title, description: description || undefined,
-          initiatorName, initiatorEmail,
-          dateRangeStart: startMs, dateRangeEnd: endMs,
+          title,
+          description: description || undefined,
+          organizerName,
+          organizerEmail,
+          // Local calendar dates; the server resolves them in `timezone`.
+          startDate,
+          endDate,
           durationMinutes: duration,
-          workingHoursStart: whStart, workingHoursEnd: whEnd,
-          timezone, excludeWeekends,
+          workingHoursStart: workingStart,
+          workingHoursEnd: workingEnd,
+          timezone,
+          excludeWeekends,
           participantEmails,
+          website,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error ? JSON.stringify(data.error) : "Failed to create event."); return; }
-      setPendingEventId(data.eventId);
-      setFlyAway(true);
+
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error ?? "That didn't work. Check the form and try again.");
+        setFieldErrors(data.fieldErrors ?? []);
+        return;
+      }
+
+      // The organizer connects their calendar before anyone is invited — that
+      // is what puts their own availability into the calculation.
+      const next = `/events/${data.eventId}?organizerToken=${encodeURIComponent(
+        data.organizerToken
+      )}&connect=${encodeURIComponent(data.organizerInviteToken)}`;
+
+      setPendingUrl(next);
+      if (reduceMotion) router.push(next);
+      else setFlyAway(true);
     } catch {
-      setError("Network error. Please try again.");
+      setError("We couldn't reach the server. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -92,165 +148,309 @@ export default function CreateEventPage() {
 
   if (flyAway) return <FlyAwayCalendar onComplete={handleFlyAwayComplete} />;
 
+  const heroMotion = reduceMotion
+    ? {}
+    : {
+        initial: { opacity: 0, y: 20 },
+        animate: { opacity: 1, y: 0 },
+        transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as const },
+      };
+
   return (
     <div>
-      {/* Hero */}
-      <motion.div
-        className="mb-10"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <h1 className="font-display text-4xl font-bold leading-tight" style={{ color: "var(--color-primary)" }}>
+      <motion.div className="mb-10" {...heroMotion}>
+        <h1
+          className="font-display text-4xl font-bold leading-tight"
+          style={{ color: "var(--color-primary)" }}
+        >
           Find a time that{" "}
           <span style={{ color: "var(--color-accent-a)" }}>works.</span>
         </h1>
         <p className="mt-3 text-lg" style={{ color: "var(--color-muted)" }}>
-          Set up an event, invite your group, and let everyone's calendars do the work.
+          Set up an event, invite your group, and let everyone&rsquo;s calendars do the
+          work.
         </p>
       </motion.div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Section: Event Details */}
-        <Card index={0} title="Event Details">
-          <Field label="Meeting Title" required>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-              required maxLength={200} placeholder="Weekly Sync, Team Lunch…"
-              className={inputClass} />
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <Card index={0} title="Event details" reduceMotion={reduceMotion}>
+          <Field label="Meeting title" htmlFor={titleId} required error={errorFor("title")}>
+            <input
+              id={titleId}
+              type="text"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+              maxLength={200}
+              placeholder="Weekly sync"
+              aria-invalid={errorFor("title") ? true : undefined}
+              className={inputClass}
+              style={inputStyle}
+            />
           </Field>
-          <Field label="Description">
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)}
-              rows={2} maxLength={1000} placeholder="What's this meeting about?"
-              className={inputClass} />
+
+          <Field label="Description" htmlFor={descriptionId} error={errorFor("description")}>
+            <textarea
+              id={descriptionId}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={2}
+              maxLength={1000}
+              placeholder="What is this meeting about?"
+              className={inputClass}
+              style={{ ...inputStyle, minHeight: "72px", paddingTop: "10px" }}
+            />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Duration" required>
-              <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
-                className={inputClass}>
-                {[15, 30, 45, 60, 90, 120].map((d) => (
-                  <option key={d} value={d}>
-                    {d < 60 ? `${d} min` : d === 60 ? "1 hour" : `${d / 60} hours`}
+
+          {/* Stacks on narrow screens rather than squeezing two controls. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field
+              label="Duration"
+              htmlFor={durationId}
+              required
+              error={errorFor("durationMinutes")}
+            >
+              <select
+                id={durationId}
+                value={duration}
+                onChange={(event) => setDuration(Number(event.target.value))}
+                className={inputClass}
+                style={inputStyle}
+              >
+                {DURATIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {durationLabel(minutes)}
                   </option>
                 ))}
               </select>
             </Field>
-            <Field label="Timezone" required>
-              <select value={timezone} onChange={(e) => setTimezone(e.target.value)}
-                className={inputClass}>
-                {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-              </select>
-            </Field>
+
+            <TimezoneField label="Timezone" value={timezone} onChange={setTimezone} />
           </div>
         </Card>
 
-        {/* Section: Date Window */}
-        <Card index={1} title="Availability Window">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Earliest Date" required>
-              <input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)}
-                required className={inputClass} />
-            </Field>
-            <Field label="Latest Date" required>
-              <input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)}
-                required className={inputClass} />
-            </Field>
-          </div>
+        <Card index={1} title="Availability window" reduceMotion={reduceMotion}>
+          <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+            Both dates are included, and every time below is in {timezone}.
+          </p>
 
-          {/* Clock pickers */}
-          <div className="mt-6">
-            <p className="mb-4 text-sm font-medium" style={{ color: "var(--color-muted)" }}>
-              Working Hours
-            </p>
-            <div className="flex flex-col gap-8 sm:flex-row sm:justify-around">
-              <ClockPicker value={whStart} onChange={setWhStart} label="From" />
-              <ClockPicker value={whEnd} onChange={setWhEnd} label="Until" />
-            </div>
-          </div>
-
-          <label className="mt-4 flex cursor-pointer items-center gap-3">
-            <div
-              onClick={() => setExcludeWeekends((v) => !v)}
-              className="relative h-6 w-11 cursor-pointer rounded-full transition-colors"
-              style={{ background: excludeWeekends ? "var(--color-accent-c)" : "var(--color-border)" }}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field
+              label="Earliest date"
+              htmlFor={startId}
+              required
+              error={errorFor("startDate")}
             >
-              <div
-                className="absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform"
-                style={{ left: excludeWeekends ? "calc(100% - 20px)" : "4px" }}
+              <input
+                id={startId}
+                type="date"
+                value={startDate}
+                min={todayLocal()}
+                onChange={(event) => setStartDate(event.target.value)}
+                required
+                className={inputClass}
+                style={inputStyle}
               />
+            </Field>
+
+            <Field
+              label="Latest date"
+              htmlFor={endId}
+              required
+              error={errorFor("endDate")}
+            >
+              <input
+                id={endId}
+                type="date"
+                value={endDate}
+                min={startDate || todayLocal()}
+                onChange={(event) => setEndDate(event.target.value)}
+                required
+                className={inputClass}
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+
+          <fieldset className="mt-2 border-0 p-0">
+            <legend
+              className="mb-3 text-sm font-medium"
+              style={{ color: "var(--color-primary)" }}
+            >
+              Working hours
+            </legend>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <TimeField label="From" value={workingStart} onChange={setWorkingStart} />
+              <TimeField label="Until" value={workingEnd} onChange={setWorkingEnd} />
             </div>
-            <span className="text-sm" style={{ color: "var(--color-primary)" }}>Exclude weekends</span>
+            {errorFor("workingHoursEnd") && (
+              <p className="mt-2 text-sm" style={{ color: "var(--color-accent-a)" }}>
+                {errorFor("workingHoursEnd")}
+              </p>
+            )}
+          </fieldset>
+
+          {/* A real checkbox: focusable, toggleable with Space, and announced
+              with its state. The previous clickable div was none of those. */}
+          <label
+            className="mt-4 flex cursor-pointer items-center gap-3"
+            style={{ minHeight: "44px" }}
+          >
+            <input
+              type="checkbox"
+              checked={excludeWeekends}
+              onChange={(event) => setExcludeWeekends(event.target.checked)}
+              className="h-5 w-5 rounded focus:outline-none focus:ring-2 [--tw-ring-color:var(--color-accent-c)]"
+              style={{ accentColor: "var(--color-accent-c)" }}
+            />
+            <span className="text-sm" style={{ color: "var(--color-primary)" }}>
+              Skip weekends
+            </span>
           </label>
         </Card>
 
-        {/* Section: Your Info */}
-        <Card index={2} title="Your Information">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Your Name" required>
-              <input type="text" value={initiatorName} onChange={(e) => setInitiatorName(e.target.value)}
-                required placeholder="Jane Smith" className={inputClass} />
+        <Card index={2} title="Your information" reduceMotion={reduceMotion}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field
+              label="Your name"
+              htmlFor={nameId}
+              required
+              error={errorFor("organizerName")}
+            >
+              <input
+                id={nameId}
+                type="text"
+                value={organizerName}
+                onChange={(event) => setOrganizerName(event.target.value)}
+                required
+                autoComplete="name"
+                placeholder="Jane Smith"
+                className={inputClass}
+                style={inputStyle}
+              />
             </Field>
-            <Field label="Your Email" required>
-              <input type="email" value={initiatorEmail} onChange={(e) => setInitiatorEmail(e.target.value)}
-                required placeholder="jane@example.com" className={inputClass} />
+
+            <Field
+              label="Your email"
+              htmlFor={emailId}
+              required
+              error={errorFor("organizerEmail")}
+            >
+              <input
+                id={emailId}
+                type="email"
+                value={organizerEmail}
+                onChange={(event) => setOrganizerEmail(event.target.value)}
+                required
+                autoComplete="email"
+                placeholder="jane@example.com"
+                className={inputClass}
+                style={inputStyle}
+              />
             </Field>
           </div>
         </Card>
 
-        {/* Section: Participants */}
-        <Card index={3} title="Participants">
-          <p className="mb-3 text-sm" style={{ color: "var(--color-muted)" }}>
-            Type an email and press <kbd className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono">Enter</kbd> to add. Add as many as you need.
-          </p>
-          <ParticipantChips emails={participantEmails} onChange={setParticipantEmails} />
-          {participantEmails.length > 0 && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-2 text-xs"
-              style={{ color: "var(--color-muted)" }}
-            >
-              {participantEmails.length} participant{participantEmails.length !== 1 ? "s" : ""} added
-            </motion.p>
+        <Card index={3} title="Who's coming" reduceMotion={reduceMotion}>
+          <span id={participantsLabelId} className="sr-only">
+            Participant email addresses
+          </span>
+          <ParticipantChips
+            emails={participantEmails}
+            onChange={setParticipantEmails}
+            labelledBy={participantsLabelId}
+          />
+          {errorFor("participantEmails") && (
+            <p className="mt-2 text-sm" style={{ color: "var(--color-accent-a)" }}>
+              {errorFor("participantEmails")}
+            </p>
           )}
         </Card>
 
+        {/* Invisible to people, irresistible to form-filling bots. */}
+        <div aria-hidden="true" className="hidden">
+          <label htmlFor="website">Leave this field empty</label>
+          <input
+            id="website"
+            name="website"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={website}
+            onChange={(event) => setWebsite(event.target.value)}
+          />
+        </div>
+
         {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
+          <div
+            id={errorId}
+            role="alert"
             className="rounded-xl px-4 py-3 text-sm"
-            style={{ background: "#FFF5F3", color: "var(--color-accent-a)", border: "1px solid #FDDDD6" }}
+            style={{
+              background: "#FFF5F3",
+              color: "#8A2E14",
+              border: "1px solid #FDDDD6",
+            }}
           >
             {error}
-          </motion.div>
+          </div>
         )}
 
         <motion.button
           type="submit"
           disabled={loading}
-          whileHover={{ scale: loading ? 1 : 1.02 }}
-          whileTap={{ scale: loading ? 1 : 0.97 }}
+          whileHover={reduceMotion || loading ? undefined : { scale: 1.01 }}
+          whileTap={reduceMotion || loading ? undefined : { scale: 0.99 }}
           className="w-full rounded-2xl py-4 text-base font-semibold text-white transition-opacity disabled:opacity-60"
-          style={{ background: "var(--color-accent-a)" }}
+          style={{ background: "var(--color-accent-a)", minHeight: "44px" }}
         >
-          {loading ? "Creating…" : "Create Event & Send Invites →"}
+          {loading ? "Creating…" : "Create event"}
         </motion.button>
+
+        <p className="text-center text-sm" style={{ color: "var(--color-muted)" }}>
+          You&rsquo;ll connect your own calendar next. Invitations go out after that.
+        </p>
       </form>
     </div>
   );
 }
 
-function Card({ index, title, children }: { index: number; title: string; children: React.ReactNode }) {
+function Card({
+  index,
+  title,
+  children,
+  reduceMotion,
+}: {
+  index: number;
+  title: string;
+  children: React.ReactNode;
+  reduceMotion: boolean | null;
+}) {
+  const animation = reduceMotion
+    ? {}
+    : {
+        initial: { opacity: 0, y: 24 },
+        animate: { opacity: 1, y: 0 },
+        transition: {
+          delay: index * 0.08,
+          duration: 0.45,
+          ease: [0.22, 1, 0.36, 1] as const,
+        },
+      };
+
   return (
     <motion.section
-      custom={index}
-      variants={cardVariants}
-      initial="hidden"
-      animate="visible"
-      className="rounded-2xl border p-6 md:p-8"
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      {...animation}
+      className="rounded-2xl border p-5 sm:p-6 md:p-8"
+      style={{
+        background: "var(--color-surface)",
+        borderColor: "var(--color-border)",
+      }}
     >
-      <h2 className="font-display mb-5 text-lg font-bold" style={{ color: "var(--color-primary)" }}>
+      <h2
+        className="font-display mb-5 text-lg font-bold"
+        style={{ color: "var(--color-primary)" }}
+      >
         {title}
       </h2>
       <div className="space-y-4">{children}</div>
@@ -258,22 +458,51 @@ function Card({ index, title, children }: { index: number; title: string; childr
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  required,
+  error,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  required?: boolean;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium" style={{ color: "var(--color-primary)" }}>
+      <label
+        htmlFor={htmlFor}
+        className="mb-1.5 block text-sm font-medium"
+        style={{ color: "var(--color-primary)" }}
+      >
         {label}
-        {required && <span className="ml-1" style={{ color: "var(--color-accent-a)" }}>*</span>}
+        {required && (
+          <span className="ml-1" style={{ color: "var(--color-accent-a)" }} aria-hidden="true">
+            *
+          </span>
+        )}
+        {required && <span className="sr-only"> (required)</span>}
       </label>
       {children}
+      {error && (
+        <p className="mt-1 text-sm" style={{ color: "var(--color-accent-a)" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
 const inputClass =
-  "w-full rounded-xl border px-3.5 py-2.5 text-sm transition-colors focus:outline-none " +
+  "w-full rounded-xl border px-3.5 text-base transition-colors focus:outline-none " +
   "focus:ring-2 focus:ring-offset-0 " +
   "[border-color:var(--color-border)] " +
   "[background:var(--color-surface)] " +
   "[color:var(--color-primary)] " +
   "[--tw-ring-color:var(--color-accent-c)]";
+
+// 44px keeps every control at the minimum comfortable touch target.
+const inputStyle: React.CSSProperties = { minHeight: "44px" };

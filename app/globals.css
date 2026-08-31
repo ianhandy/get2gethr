@@ -1,15 +1,21 @@
-@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap");
+/* Fonts are loaded by next/font in layout.tsx. Importing them again here
+   duplicated the download and blocked first paint. */
 @import "tailwindcss";
 
 :root {
-  --color-bg:       #FAF6F0;
-  --color-surface:  #FFFFFF;
-  --color-primary:  #3D405B;
-  --color-accent-a: #E07A5F;
-  --color-accent-b: #F2CC8F;
-  --color-accent-c: #81B29A;
-  --color-muted:    #9795A0;
-  --color-border:   #E8E2D9;
+  --color-bg: #faf6f0;
+  --color-surface: #ffffff;
+  --color-primary: #3d405b;
+  --color-accent-a: #e07a5f;
+  --color-accent-b: #f2cc8f;
+  --color-accent-c: #81b29a;
+  --color-muted: #6f6d78;
+  --color-border: #e8e2d9;
+
+  /* Warm identity, stated deliberately: the palette is light by design and
+     does not invert. `color-scheme` keeps form controls consistent rather
+     than letting the browser render dark widgets on a cream surface. */
+  color-scheme: light;
 }
 
 html {
@@ -19,12 +25,12 @@ html {
 body {
   background: var(--color-bg);
   color: var(--color-primary);
-  font-family: var(--font-dm-sans, 'DM Sans'), sans-serif;
+  font-family: var(--font-dm-sans, "DM Sans"), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 .font-display {
-  font-family: var(--font-playfair, 'Playfair Display'), serif;
+  font-family: var(--font-playfair, "Playfair Display"), Georgia, serif;
 }
 
 *:focus-visible {
@@ -32,12 +38,12 @@ body {
   outline-offset: 2px;
 }
 
-/* Ensure form inputs and selects are always visible */
 input,
 textarea,
 select {
   background-color: var(--color-surface);
   color: var(--color-primary);
+  font: inherit;
 }
 
 input::placeholder,
@@ -46,8 +52,54 @@ textarea::placeholder {
   opacity: 1;
 }
 
-/* Styled date input */
-input[type="date"]::-webkit-calendar-picker-indicator {
-  opacity: 0.5;
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
   cursor: pointer;
+}
+
+/* Visually hidden, still announced. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 0 0 0.75rem 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* Honour the system preference everywhere, including animations this
+   stylesheet does not own. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

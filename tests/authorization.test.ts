@@ -83,15 +83,18 @@ describe("authorizeOrganizer", () => {
   });
 
   it("reports a nonexistent event identically to a wrong token", async () => {
-    const missing = await authorizeOrganizer(
-      "00000000-0000-4000-8000-000000000000",
-      generateToken()
-    ).catch((error) => error as AuthorizationError);
+    const capture = async (eventId: string): Promise<AuthorizationError> => {
+      try {
+        await authorizeOrganizer(eventId, generateToken());
+      } catch (error) {
+        return error as AuthorizationError;
+      }
+      throw new Error("expected authorization to fail");
+    };
+
+    const missing = await capture("00000000-0000-4000-8000-000000000000");
     const seeded = await seedEvent();
-    const wrong = await authorizeOrganizer(
-      seeded.event.id,
-      generateToken()
-    ).catch((error) => error as AuthorizationError);
+    const wrong = await capture(seeded.event.id);
 
     expect(missing.status).toBe(wrong.status);
     expect(missing.message).toBe(wrong.message);

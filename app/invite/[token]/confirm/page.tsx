@@ -1,267 +1,442 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { format } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 interface InviteData {
-  participant: { id: string; email: string; status: string };
-  event: { id: string; title: string; timezone: string; status: string; initiatorName: string };
+  event: {
+    id: string;
+    title: string;
+    timezone: string;
+    status: string;
+    organizerName: string;
+    calendarWriteStatus: string;
+  };
+  viewer: { status?: string; email?: string };
+  currentSlot: { id: string; startTime: number; endTime: number } | null;
+  confirmedSlot: { id: string; startTime: number; endTime: number } | null;
 }
 
-interface ProposedSlot { id: string; startTime: number; endTime: number }
+const SIZE = 200;
+const CX = SIZE / 2;
+const CY = SIZE / 2;
+const R = 80;
 
-// Read-only clock face showing a specific time
-function ClockDisplay({ h24, min }: { h24: number; min: number }) {
-  const SIZE = 200;
-  const CX = SIZE / 2;
-  const CY = SIZE / 2;
-  const R = 80;
-  const secondsRef = useRef(0);
+function polar(angleDeg: number, r: number) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
+}
 
-  function polar(angleDeg: number, r: number) {
-    const rad = ((angleDeg - 90) * Math.PI) / 180;
-    return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
-  }
+/**
+ * A decorative clock showing the proposed time.
+ *
+ * Purely presentational: the same time is stated in text directly below, so
+ * this is `aria-hidden` and carries no interaction. The previous version read
+ * a ref during render to place a sweeping second hand, which React explicitly
+ * forbids — the hand is gone rather than papered over.
+ */
+function ClockDisplay({ hours, minutes }: { hours: number; minutes: number }) {
+  const reduceMotion = useReducedMotion();
+  const hourTip = polar(((hours % 12) + minutes / 60) * 30, R * 0.5);
+  const minuteTip = polar(minutes * 6, R * 0.78);
 
-  const hourAngle   = ((h24 % 12) + min / 60) * 30;
-  const minuteAngle = min * 6;
-  const hourTip     = polar(hourAngle,   R * 0.5);
-  const minuteTip   = polar(minuteAngle, R * 0.78);
+  const handTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 60, damping: 20, delay: 0.3 };
 
   const ticks = Array.from({ length: 12 }, (_, i) => {
-    const a = i * 30;
-    const inner = polar(a, R * 0.88);
-    const outer = polar(a, R * 0.98);
-    const num = i === 0 ? 12 : i;
-    const numPos = polar(a, R * 0.72);
-    return { inner, outer, num, numPos };
+    const angle = i * 30;
+    return {
+      inner: polar(angle, R * 0.88),
+      outer: polar(angle, R * 0.98),
+      numeral: i === 0 ? 12 : i,
+      numeralPosition: polar(angle, R * 0.72),
+    };
   });
 
   return (
-    <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-      <circle cx={CX} cy={CY} r={R} fill="var(--color-surface)" stroke="var(--color-border)" strokeWidth="2" />
-
-      {ticks.map(({ inner, outer, num, numPos }) => (
-        <g key={num}>
-          <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y}
-            stroke="var(--color-border)" strokeWidth="1.5" />
-          <text x={numPos.x} y={numPos.y} textAnchor="middle" dominantBaseline="central"
-            fontSize="10" fill="var(--color-muted)" fontFamily="inherit">
-            {num}
+    <svg
+      width={SIZE}
+      height={SIZE}
+      viewBox={`0 0 ${SIZE} ${SIZE}`}
+      aria-hidden="true"
+      focusable="false"
+      style={{ maxWidth: "100%" }}
+    >
+      <circle
+        cx={CX}
+        cy={CY}
+        r={R}
+        fill="var(--color-surface)"
+        stroke="var(--color-border)"
+        strokeWidth="2"
+      />
+      {ticks.map(({ inner, outer, numeral, numeralPosition }) => (
+        <g key={numeral}>
+          <line
+            x1={inner.x}
+            y1={inner.y}
+            x2={outer.x}
+            y2={outer.y}
+            stroke="var(--color-border)"
+            strokeWidth="1.5"
+          />
+          <text
+            x={numeralPosition.x}
+            y={numeralPosition.y}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize="10"
+            fill="var(--color-muted)"
+          >
+            {numeral}
           </text>
         </g>
       ))}
-
-      {/* Hour hand */}
       <motion.line
-        x1={CX} y1={CY} x2={hourTip.x} y2={hourTip.y}
-        stroke="var(--color-accent-a)" strokeWidth="4" strokeLinecap="round"
-        initial={{ x2: CX, y2: CY }}
+        x1={CX}
+        y1={CY}
+        stroke="var(--color-accent-a)"
+        strokeWidth="4"
+        strokeLinecap="round"
+        initial={{ x2: reduceMotion ? hourTip.x : CX, y2: reduceMotion ? hourTip.y : CY }}
         animate={{ x2: hourTip.x, y2: hourTip.y }}
-        transition={{ type: "spring", stiffness: 60, damping: 20, delay: 0.3 }}
+        transition={handTransition}
       />
-
-      {/* Minute hand */}
       <motion.line
-        x1={CX} y1={CY} x2={minuteTip.x} y2={minuteTip.y}
-        stroke="var(--color-primary)" strokeWidth="2.5" strokeLinecap="round"
-        initial={{ x2: CX, y2: CY }}
+        x1={CX}
+        y1={CY}
+        stroke="var(--color-primary)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        initial={{
+          x2: reduceMotion ? minuteTip.x : CX,
+          y2: reduceMotion ? minuteTip.y : CY,
+        }}
         animate={{ x2: minuteTip.x, y2: minuteTip.y }}
-        transition={{ type: "spring", stiffness: 60, damping: 20, delay: 0.5 }}
+        transition={{ ...handTransition, delay: reduceMotion ? 0 : 0.5 }}
       />
-
-      {/* Second hand — single sweep then stops */}
-      <motion.line
-        x1={CX} y1={CY}
-        x2={polar(secondsRef.current * 6, R * 0.9).x}
-        y2={polar(secondsRef.current * 6, R * 0.9).y}
-        stroke="var(--color-accent-a)" strokeWidth="1" strokeLinecap="round" opacity="0.5"
-        initial={{ rotate: 0 }}
-        animate={{ rotate: 360 }}
-        style={{ transformOrigin: `${CX}px ${CY}px` }}
-        transition={{ duration: 1, delay: 0.2, ease: "linear", repeat: 0 }}
-      />
-
       <circle cx={CX} cy={CY} r="4" fill="var(--color-primary)" />
     </svg>
   );
 }
 
+function partsInZone(ms: number, timezone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const parts = formatter.formatToParts(new Date(ms));
+  const field = (type: string) => Number(parts.find((part) => part.type === type)!.value);
+  return { hours: field("hour"), minutes: field("minute") };
+}
+
+function formatDay(ms: number, timezone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(ms));
+}
+
+function formatClock(ms: number, timezone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(ms));
+}
+
 export default function ConfirmPage() {
   const { token } = useParams<{ token: string }>();
+  const reduceMotion = useReducedMotion();
+
   const [data, setData] = useState<InviteData | null>(null);
-  const [slot, setSlot] = useState<ProposedSlot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [responded, setResponded] = useState<"confirmed" | "declined" | null>(null);
 
-  useEffect(() => {
-    fetch(`/api/invite/${token}`)
-      .then((r) => r.json())
-      .then(async (d) => {
-        if (d.error) { setError(d.error); return; }
-        setData(d);
-        const evRes = await fetch(`/api/events/${d.event.id}`);
-        const evData = await evRes.json();
-        setSlot(evData.currentSlot ?? null);
-      })
-      .catch(() => setError("Failed to load."));
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/invite/${token}`);
+      const body = await response.json();
+      if (!response.ok) setError(body.error ?? "We couldn't load this invitation.");
+      else setData(body);
+    } catch {
+      setError("We couldn't reach the server. Please try again.");
+    }
   }, [token]);
 
-  async function respond(response: "confirmed" | "declined") {
+  useEffect(() => {
+    // `ignore` drops a response that arrives after the token changed.
+    let ignore = false;
+    void (async () => {
+      const response = await fetch(`/api/invite/${token}`).catch(() => null);
+      if (ignore) return;
+      if (!response) {
+        setError("We couldn't reach the server. Please try again.");
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (ignore) return;
+      if (!response.ok || !body) {
+        setError(body?.error ?? "We couldn't load this invitation.");
+      } else {
+        setData(body);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [token]);
+
+  async function respond(answer: "confirmed" | "declined") {
+    if (!data?.currentSlot) return;
     setSubmitting(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/invite/${token}/confirm`, {
+      const response = await fetch(`/api/invite/${token}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response }),
+        body: JSON.stringify({ response: answer, slotId: data.currentSlot.id }),
       });
-      if (res.ok) {
-        if (response === "confirmed") {
-          import("canvas-confetti").then(({ default: confetti }) => {
-            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-          });
-        }
-        setResponded(response);
-      } else {
-        const d = await res.json();
-        setError(d.error ?? "Failed to submit response.");
+      const body = await response.json();
+
+      if (!response.ok) {
+        setError(body.error ?? "We couldn't record your answer.");
+        // The slot may have moved on; reload so the page shows the real state.
+        await load();
+        return;
       }
-    } catch { setError("Network error. Please try again."); }
-    finally { setSubmitting(false); }
+
+      if (answer === "confirmed" && !reduceMotion) {
+        const { default: confetti } = await import("canvas-confetti");
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      }
+      setResponded(answer);
+      await load();
+    } catch {
+      setError("We couldn't reach the server. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  if (error) return (
-    <div className="rounded-2xl border p-8 text-center" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-      <p className="text-sm" style={{ color: "var(--color-accent-a)" }}>{error}</p>
-    </div>
-  );
+  const fade = reduceMotion
+    ? {}
+    : { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } };
 
-  if (!data) return (
-    <div className="flex items-center gap-3 text-sm" style={{ color: "var(--color-muted)" }}>
-      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-      Loading…
-    </div>
-  );
-
-  const { participant, event } = data;
-
-  if (responded === "confirmed") return (
-    <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-      className="rounded-2xl border p-10 text-center"
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-2xl"
-        style={{ background: "color-mix(in srgb, var(--color-accent-c) 20%, transparent)" }}>
-        🎉
-      </div>
-      <h1 className="font-display mb-2 text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-        Time Confirmed!
-      </h1>
-      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-        You&apos;ve confirmed your attendance for <strong>{event.title}</strong>. A final confirmation is on its way.
-      </p>
-    </motion.div>
-  );
-
-  if (responded === "declined") return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-      className="rounded-2xl border p-10 text-center"
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-      <h1 className="font-display mb-2 text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-        Looking for Another Time
-      </h1>
-      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-        No problem! We&apos;ll find the next available slot and notify everyone.
-      </p>
-    </motion.div>
-  );
-
-  if (participant.status !== "joined") return (
-    <div className="rounded-2xl border p-8" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-        You need to join the event first.{" "}
-        <a href={`/invite/${token}`} style={{ color: "var(--color-accent-a)" }} className="underline">
-          Go back to the invitation
-        </a>.
-      </p>
-    </div>
-  );
-
-  if (!slot) return (
-    <div className="rounded-2xl border p-8 text-center" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-      <h1 className="font-display mb-2 text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-        No Time Proposed Yet
-      </h1>
-      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-        Still waiting for everyone to respond. You&apos;ll receive an email when it&apos;s time to confirm.
-      </p>
-    </div>
-  );
-
-  const startZoned = toZonedTime(new Date(slot.startTime * 1000), event.timezone);
-  const endZoned   = toZonedTime(new Date(slot.endTime   * 1000), event.timezone);
-  const h24 = startZoned.getHours();
-  const min  = startZoned.getMinutes();
-
-  return (
-    <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-        <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-muted)" }}>Proposed meeting time</p>
-        <h1 className="font-display text-3xl font-bold" style={{ color: "var(--color-primary)" }}>{event.title}</h1>
-      </motion.div>
-
-      {/* Clock + date */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+  if (error && !data) {
+    return (
+      <div
+        role="alert"
         className="rounded-2xl border p-8 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        <div className="flex justify-center mb-4">
-          <ClockDisplay h24={h24} min={min} />
-        </div>
-        <p className="font-display text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-          {format(startZoned, "EEEE, MMMM d, yyyy")}
+        <p className="text-sm" style={{ color: "#8A2E14" }}>
+          {error}
         </p>
-        <p className="mt-1 text-lg" style={{ color: "var(--color-muted)" }}>
-          {format(startZoned, "h:mm a")} – {format(endZoned, "h:mm a")}
-          <span className="ml-2 text-sm">({event.timezone})</span>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <p role="status" className="text-sm" style={{ color: "var(--color-muted)" }}>
+        Loading…
+      </p>
+    );
+  }
+
+  const { event, viewer } = data;
+
+  if (responded === "confirmed") {
+    // "Confirmed" here means this person answered — not that the meeting
+    // exists on a calendar yet. The wording keeps that distinction.
+    const written = event.calendarWriteStatus === "written";
+    return (
+      <motion.div
+        {...fade}
+        className="rounded-2xl border p-10 text-center"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      >
+        <h1
+          className="font-display mb-3 text-2xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          Thanks — that&rsquo;s a yes from you
+        </h1>
+        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+          {written
+            ? `${event.title} is on the calendar. Check your inbox for the invitation.`
+            : `We'll add ${event.title} to the calendar once everyone has answered, and email you the invitation.`}
         </p>
       </motion.div>
+    );
+  }
 
-      {/* Confirm / decline */}
+  if (responded === "declined") {
+    return (
       <motion.div
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+        {...fade}
+        className="rounded-2xl border p-10 text-center"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      >
+        <h1
+          className="font-display mb-3 text-2xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          Looking for another time
+        </h1>
+        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+          No problem — we&rsquo;ll propose the next time that works and let everyone know.
+        </p>
+      </motion.div>
+    );
+  }
+
+  if (viewer.status !== "joined") {
+    return (
+      <div
+        className="rounded-2xl border p-8"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      >
+        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+          Connect your calendar first.{" "}
+          <Link
+            href={`/invite/${token}`}
+            style={{ color: "var(--color-accent-a)" }}
+            className="underline"
+          >
+            Go back to the invitation
+          </Link>
+          .
+        </p>
+      </div>
+    );
+  }
+
+  if (!data.currentSlot) {
+    return (
+      <div
+        className="rounded-2xl border p-8 text-center"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      >
+        <h1
+          className="font-display mb-2 text-2xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          No time to confirm yet
+        </h1>
+        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+          We&rsquo;re still waiting on everyone. You&rsquo;ll get an email the moment
+          there&rsquo;s a time to look at.
+        </p>
+      </div>
+    );
+  }
+
+  const startMs = data.currentSlot.startTime * 1000;
+  const endMs = data.currentSlot.endTime * 1000;
+  const { hours, minutes } = partsInZone(startMs, event.timezone);
+  const readableTime = `${formatDay(startMs, event.timezone)}, ${formatClock(
+    startMs,
+    event.timezone
+  )} to ${formatClock(endMs, event.timezone)} ${event.timezone}`;
+
+  return (
+    <div className="space-y-6">
+      <motion.div {...fade}>
+        <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-muted)" }}>
+          Proposed meeting time
+        </p>
+        <h1
+          className="font-display text-3xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          {event.title}
+        </h1>
+      </motion.div>
+
+      <motion.section
+        {...fade}
+        className="rounded-2xl border p-6 text-center sm:p-8"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+        aria-label="Proposed time"
+      >
+        <div className="mb-4 flex justify-center">
+          <ClockDisplay hours={hours} minutes={minutes} />
+        </div>
+        {/* The authoritative statement of the time, for everyone. */}
+        <p
+          className="font-display text-2xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          {formatDay(startMs, event.timezone)}
+        </p>
+        <p className="mt-1 text-lg" style={{ color: "var(--color-muted)" }}>
+          {formatClock(startMs, event.timezone)} – {formatClock(endMs, event.timezone)}
+          <span className="ml-2 text-sm">({event.timezone})</span>
+        </p>
+        <span className="sr-only">{readableTime}</span>
+      </motion.section>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{ background: "#FFF5F3", color: "#8A2E14", border: "1px solid #FDDDD6" }}
+        >
+          {error}
+        </div>
+      )}
+
+      <motion.section
+        {...fade}
         className="rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        <h2 className="font-display mb-5 text-lg font-bold" style={{ color: "var(--color-primary)" }}>
+        <h2
+          className="font-display mb-5 text-lg font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
           Does this time work for you?
         </h2>
-        <AnimatePresence>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <motion.button
-              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }}
-              onClick={() => respond("confirmed")} disabled={submitting}
-              className="flex-1 rounded-2xl py-3.5 text-sm font-semibold text-white disabled:opacity-60"
-              style={{ background: "var(--color-accent-c)" }}
-            >
-              Works for me ✓
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }}
-              onClick={() => respond("declined")} disabled={submitting}
-              className="flex-1 rounded-2xl border py-3.5 text-sm font-semibold disabled:opacity-60"
-              style={{ color: "var(--color-accent-a)", borderColor: "var(--color-accent-a)", background: "transparent" }}
-            >
-              Try another time
-            </motion.button>
-          </div>
-        </AnimatePresence>
-        {submitting && <p className="mt-3 text-center text-xs" style={{ color: "var(--color-muted)" }}>Submitting…</p>}
-      </motion.div>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => respond("confirmed")}
+            disabled={submitting}
+            className="flex-1 rounded-2xl px-4 text-base font-semibold text-white disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+            style={{ background: "var(--color-accent-c)", minHeight: "48px" }}
+          >
+            Works for me
+          </button>
+          <button
+            type="button"
+            onClick={() => respond("declined")}
+            disabled={submitting}
+            className="flex-1 rounded-2xl border px-4 text-base font-semibold disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+            style={{
+              color: "#8A2E14",
+              borderColor: "var(--color-accent-a)",
+              background: "transparent",
+              minHeight: "48px",
+            }}
+          >
+            Try another time
+          </button>
+        </div>
+        <p role="status" aria-live="polite" className="sr-only">
+          {submitting ? "Sending your answer" : ""}
+        </p>
+      </motion.section>
     </div>
   );
 }
