@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureMigrated } from "@/lib/db";
 import { AuthorizationError, authorizeInvite } from "@/lib/authorization";
 import { startConnection } from "@/lib/calendar-connect";
-import type { CalendarProviderId } from "@/lib/calendar";
+import { CalendarNotConfiguredError, type CalendarProviderId } from "@/lib/calendar";
 import type { ClientKind } from "@/lib/oauth-state";
 import {
   clientIdentifier,
@@ -75,6 +75,18 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof AuthorizationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof CalendarNotConfiguredError) {
+      // An operator problem, not the visitor's. Say so plainly rather than
+      // sending them to a provider page built from missing credentials.
+      console.error("Calendar broker is not configured:", error.message);
+      return NextResponse.json(
+        {
+          error:
+            "Calendar connection isn't available right now. The organizer has been notified.",
+        },
+        { status: 503 }
+      );
     }
     console.error("GET /api/calendar/connect error:", error);
     return NextResponse.json(

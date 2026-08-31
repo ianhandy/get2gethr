@@ -51,12 +51,19 @@ export function getBroker(id: BrokerId): CalendarBroker {
  * deployment without a broker contract still works for Google accounts rather
  * than failing shut.
  */
+export class CalendarNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CalendarNotConfiguredError";
+  }
+}
+
 export function getActiveBroker(): CalendarBroker {
   const preferred = process.env.CALENDAR_BROKER as BrokerId | undefined;
   if (preferred) {
     const broker = getBroker(preferred);
     if (!broker.isConfigured()) {
-      throw new Error(
+      throw new CalendarNotConfiguredError(
         `CALENDAR_BROKER is set to "${preferred}" but its credentials are missing`
       );
     }
@@ -65,7 +72,16 @@ export function getActiveBroker(): CalendarBroker {
 
   const cronofy = getBroker("cronofy");
   if (cronofy.isConfigured()) return cronofy;
-  return getBroker("google");
+
+  const google = getBroker("google");
+  if (google.isConfigured()) return google;
+
+  // Sending someone to an authorization URL built from missing credentials
+  // produces a provider error page with an empty client_id. Refusing here
+  // turns a confusing dead end into an operator-visible misconfiguration.
+  throw new CalendarNotConfiguredError(
+    "No calendar provider is configured. Set CRONOFY_CLIENT_ID/SECRET, or GOOGLE_CLIENT_ID/SECRET."
+  );
 }
 
 /** Every provider a person could connect on this deployment, for the UI. */

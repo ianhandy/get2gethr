@@ -2,146 +2,216 @@ import SwiftUI
 
 struct SlotConfirmView: View {
     let token: String
-    let slot: SlotData
 
-    @State private var isConfirming = false
-    @State private var isDeclining = false
-    @State private var result: ConfirmResult?
-    @State private var error: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    enum ConfirmResult {
-        case confirmed, declined
-    }
+    @State private var view: EventView?
+    @State private var errorMessage: String?
+    @State private var isSubmitting = false
+    @State private var answered: String?
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 4) {
-                    Text("Proposed Time")
-                        .font(.system(size: 28, weight: .bold, design: .serif))
-                        .foregroundStyle(Theme.primary)
-                    Text("Does this work for you?")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.muted)
-                }
-                .padding(.top, 16)
-
-                // Time Card
-                VStack(spacing: 12) {
-                    Text(slot.startDate, style: .date)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(Theme.primary)
-
-                    HStack(spacing: 4) {
-                        Text(slot.startDate, style: .time)
-                        Text("—")
-                        Text(slot.endDate, style: .time)
-                    }
-                    .font(.title3)
-                    .foregroundStyle(Theme.accentA)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(24)
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
-
-                // Result or Actions
-                if let result {
-                    resultView(result)
+            VStack(alignment: .leading, spacing: 20) {
+                if let answered {
+                    answeredCard(answered)
+                } else if let view {
+                    content(for: view)
+                } else if let errorMessage {
+                    errorCard(errorMessage)
                 } else {
-                    actionButtons()
-                }
-
-                if let error {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    ProgressView("Loading…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
+            .padding(20)
         }
         .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle("Confirm a time")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+        .refreshable { await load() }
     }
 
     @ViewBuilder
-    private func actionButtons() -> some View {
-        VStack(spacing: 12) {
-            Button {
-                Task { await respond("confirmed") }
-            } label: {
-                HStack(spacing: 8) {
-                    if isConfirming {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: "checkmark")
-                    }
-                    Text("Confirm")
-                        .fontWeight(.semibold)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Theme.accentC)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .disabled(isConfirming || isDeclining)
+    private func content(for view: EventView) -> some View {
+        let event = view.event
 
-            Button {
-                Task { await respond("declined") }
-            } label: {
-                HStack(spacing: 8) {
-                    if isDeclining {
-                        ProgressView().tint(Theme.accentA)
-                    } else {
-                        Image(systemName: "xmark")
-                    }
-                    Text("Doesn't Work")
-                        .fontWeight(.medium)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Theme.accentA.opacity(0.1))
-                .foregroundStyle(Theme.accentA)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .disabled(isConfirming || isDeclining)
-        }
-    }
-
-    @ViewBuilder
-    private func resultView(_ result: ConfirmResult) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: result == .confirmed ? "checkmark.circle.fill" : "arrow.clockwise.circle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(result == .confirmed ? Theme.accentC : Theme.accentB)
-            Text(result == .confirmed ? "Time Confirmed!" : "Looking for Another Time")
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundStyle(Theme.primary)
-            Text(result == .confirmed
-                 ? "You'll receive a confirmation email shortly."
-                 : "We'll propose another option soon.")
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Proposed meeting time")
                 .font(.subheadline)
                 .foregroundStyle(Theme.muted)
-                .multilineTextAlignment(.center)
+            Text(event.title)
+                .font(.system(.title, design: .serif, weight: .bold))
+                .foregroundStyle(Theme.primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 20)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+
+        if view.viewer.status != .joined {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Connect your calendar first")
+                    .font(.headline)
+                    .foregroundStyle(Theme.primary)
+                Text("Go back to the invitation to connect, then come back here.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .cardStyle()
+        } else if let slot = view.currentSlot {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(event.formattedSlot(slot))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Theme.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(event.timezone)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardStyle()
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                "Proposed time: \(event.formattedSlot(slot)), \(event.timezone)"
+            )
+
+            if let errorMessage {
+                errorCard(errorMessage)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Does this time work for you?")
+                    .font(.headline)
+                    .foregroundStyle(Theme.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+
+                // Stacked, so neither label is ever squeezed or truncated.
+                Button {
+                    Task { await respond("confirmed", slotId: slot.id) }
+                } label: {
+                    Text("Works for me")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, minHeight: Theme.minTapTarget)
+                        .padding(.vertical, 6)
+                        .background(Theme.accentC)
+                        .foregroundStyle(Theme.onAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .disabled(isSubmitting)
+
+                Button {
+                    Task { await respond("declined", slotId: slot.id) }
+                } label: {
+                    Text("Try another time")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, minHeight: Theme.minTapTarget)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(Theme.accentA)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Theme.accentA, lineWidth: 1.5)
+                        )
+                }
+                .disabled(isSubmitting)
+
+                if isSubmitting {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Sending your answer")
+                }
+            }
+            .cardStyle()
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("No time to confirm yet")
+                    .font(.headline)
+                    .foregroundStyle(Theme.primary)
+                Text("We're still waiting on everyone. You'll get an email the moment there's a time to look at.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .cardStyle()
+        }
     }
 
-    private func respond(_ response: String) async {
-        if response == "confirmed" { isConfirming = true } else { isDeclining = true }
-        error = nil
-        do {
-            let _ = try await APIClient.shared.confirmSlot(token: token, response: response)
-            result = response == "confirmed" ? .confirmed : .declined
-        } catch {
-            self.error = error.localizedDescription
+    @ViewBuilder
+    private func answeredCard(_ answer: String) -> some View {
+        let confirmed = answer == "confirmed"
+        let written = view?.event.calendarWriteStatus == .written
+
+        VStack(alignment: .leading, spacing: 10) {
+            Text(confirmed ? "Thanks — that's a yes from you" : "Looking for another time")
+                .font(.system(.title2, design: .serif, weight: .bold))
+                .foregroundStyle(Theme.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // "Confirmed" means this person answered, not that a calendar entry
+            // exists. The wording keeps that distinction.
+            Text(
+                confirmed
+                    ? (written
+                        ? "It's on the calendar. Check your email for the invitation."
+                        : "We'll add it to the calendar once everyone has answered, and email you the invitation.")
+                    : "No problem — we'll propose the next time that works and let everyone know."
+            )
+            .font(.subheadline)
+            .foregroundStyle(Theme.muted)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        isConfirming = false
-        isDeclining = false
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+        .transition(reduceMotion ? .identity : .opacity)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func errorCard(_ message: String) -> some View {
+        Text(message)
+            .font(.callout)
+            .foregroundStyle(Theme.danger)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Theme.dangerSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: Behaviour
+
+    private func load() async {
+        do {
+            view = try await APIClient.shared.invite(token: token)
+            errorMessage = nil
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription
+                ?? error.localizedDescription
+        }
+    }
+
+    private func respond(_ answer: String, slotId: String) async {
+        isSubmitting = true
+        errorMessage = nil
+        defer { isSubmitting = false }
+
+        do {
+            _ = try await APIClient.shared.respondToSlot(
+                token: token,
+                response: answer,
+                // Sending the slot id means an answer to a slot that has since
+                // been replaced is rejected rather than silently recorded.
+                slotId: slotId
+            )
+            answered = answer
+            await load()
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription
+                ?? error.localizedDescription
+            await load()
+        }
     }
 }

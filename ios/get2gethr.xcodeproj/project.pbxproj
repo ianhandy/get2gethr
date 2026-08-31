@@ -20,6 +20,7 @@
 		A10011 /* ParticipantChipField.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20011; };
 		A10012 /* StatusBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20012; };
 		A10013 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20013; };
+		A10014 /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20014; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,8 @@
 		A20011 /* ParticipantChipField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantChipField.swift; sourceTree = "<group>"; };
 		A20012 /* StatusBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBanner.swift; sourceTree = "<group>"; };
 		A20013 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		A20014 /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLink.swift; sourceTree = "<group>"; };
+		A20015 /* get2gethr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = get2gethr.entitlements; sourceTree = "<group>"; };
 		A30001 /* get2gethr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = get2gethr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -63,6 +66,7 @@
 			children = (
 				A20001 /* get2gethrApp.swift */,
 				A20002 /* ContentView.swift */,
+				A20015 /* get2gethr.entitlements */,
 				A20003 /* Assets.xcassets */,
 				A50003 /* Models */,
 				A50004 /* Services */,
@@ -86,6 +90,7 @@
 			isa = PBXGroup;
 			children = (
 				A20004 /* APIClient.swift */,
+				A20014 /* DeepLink.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -198,6 +203,7 @@
 			files = (
 				A10001 /* get2gethrApp.swift in Sources */,
 				A10002 /* ContentView.swift in Sources */,
+				A10014 /* DeepLink.swift in Sources */,
 				A10004 /* APIClient.swift in Sources */,
 				A10005 /* Models.swift in Sources */,
 				A10006 /* CreateEventView.swift in Sources */,
@@ -270,16 +276,18 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = get2gethr/get2gethr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"get2gethr/Preview Content\"";
 				DEVELOPMENT_TEAM = X5BKD97T2F;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				GET2GETHR_BASE_URL = "http://localhost:3100";
+				INFOPLIST_FILE = get2gethr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -290,7 +298,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -299,16 +307,18 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = get2gethr/get2gethr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"get2gethr/Preview Content\"";
 				DEVELOPMENT_TEAM = X5BKD97T2F;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				GET2GETHR_BASE_URL = "https://get2gethr.app";
+				INFOPLIST_FILE = get2gethr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -319,7 +329,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
