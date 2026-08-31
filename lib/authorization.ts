@@ -186,8 +186,14 @@ export interface EventViewInput {
  * Everything the organizer's management surface needs, including addresses —
  * they entered them.
  */
-export function organizerEventView(input: EventViewInput) {
+export function organizerEventView(
+  input: EventViewInput,
+  /** The organizer's own participant row, when the request identified one. */
+  viewer?: Participant | null
+) {
   const { event, connections } = input;
+  const self = viewer ?? input.participants.find((p) => p.role === "organizer") ?? null;
+
   return {
     event: {
       ...publicEventView(event),
@@ -199,7 +205,18 @@ export function organizerEventView(input: EventViewInput) {
       updatedAt: event.updatedAt,
       cancelledAt: event.cancelledAt,
     },
-    viewer: { role: "organizer" as const },
+    // The organizer connects a calendar like everyone else, so their own
+    // status travels with the view. Without it the invite page cannot tell
+    // whether they have connected yet.
+    viewer: {
+      role: "organizer" as const,
+      id: self?.id,
+      email: self?.email,
+      name: self?.name,
+      status: self?.status,
+      joinedAt: self?.joinedAt,
+      connection: self ? connectionView(connections.get(self.id)) : null,
+    },
     participants: input.participants.map((participant) => ({
       id: participant.id,
       email: participant.email,
@@ -252,6 +269,8 @@ export function attendeeEventView(input: EventViewInput, viewer: Participant) {
 
 /** Dispatches to the right view for whoever is asking. */
 export function eventViewFor(audience: Audience, input: EventViewInput) {
-  if (audience.kind === "organizer") return organizerEventView(input);
+  if (audience.kind === "organizer") {
+    return organizerEventView(input, audience.participant);
+  }
   return attendeeEventView(input, audience.participant);
 }

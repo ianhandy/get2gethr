@@ -55,8 +55,16 @@ export const CreateEventSchema = z
     /** Optional deadline for responses, as a unix timestamp in seconds. */
     responseDeadline: z.number().int().positive().nullish(),
     nonresponderPolicy: z.enum(["wait", "proceed_without"]).default("wait"),
-    /** Must be empty; a filled value means a bot filled every field it saw. */
-    website: z.string().max(0).optional(),
+    /**
+     * Honeypot. A person never sees this field, so a value means a bot filled
+     * in everything it found.
+     *
+     * Validation deliberately accepts any value: rejecting it here would
+     * return an error naming the field, which teaches a bot exactly what to
+     * omit next time. The route checks it after parsing and returns an
+     * ordinary-looking success instead.
+     */
+    website: z.string().max(200).optional(),
   })
   .superRefine((data, ctx) => {
     const span = localDateDifferenceInDays(data.startDate, data.endDate);

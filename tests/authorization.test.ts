@@ -231,6 +231,20 @@ describe("audience-scoped views", () => {
     }
   });
 
+  it("carries the organizer's own connection status, so their invite page updates", async () => {
+    const { seeded, input } = await viewInput();
+    const view = organizerEventView(input, seeded.organizer);
+    expect(view.viewer.id).toBe(seeded.organizer.id);
+    expect(view.viewer.email).toBe(seeded.organizer.email);
+    expect(view.viewer.status).toBe("pending");
+    expect(view.viewer.connection).toBeNull();
+  });
+
+  it("falls back to the organizer row when no viewer is supplied", async () => {
+    const { seeded, input } = await viewInput();
+    expect(organizerEventView(input).viewer.id).toBe(seeded.organizer.id);
+  });
+
   it("dispatches on the audience", async () => {
     const { seeded, input } = await viewInput();
     const organizer = await authorizeOrganizer(seeded.event.id, seeded.organizerToken);

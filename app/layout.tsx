@@ -55,8 +55,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="mx-auto flex max-w-2xl items-center justify-between">
             <Link
               href="/"
-              className="font-display text-xl font-bold transition-colors"
-              style={{ color: "var(--color-primary)" }}
+              className="font-display flex items-center text-xl font-bold transition-colors"
+              // 44px keeps the home link a comfortable target on a phone.
+              style={{ color: "var(--color-primary)", minHeight: "44px" }}
             >
               get2<span style={{ color: "var(--color-accent-a)" }}>gethr</span>
             </Link>
@@ -68,16 +69,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </main>
 
         <footer className="mx-auto max-w-2xl px-6 pb-10 text-sm">
-          <nav aria-label="Legal and support" className="flex flex-wrap gap-x-5 gap-y-2">
-            <Link href="/privacy" style={{ color: "var(--color-muted)" }}>
-              Privacy
-            </Link>
-            <Link href="/terms" style={{ color: "var(--color-muted)" }}>
-              Terms
-            </Link>
-            <Link href="/support" style={{ color: "var(--color-muted)" }}>
-              Support
-            </Link>
+          {/* Standalone navigation links, so each gets a full 44px target
+              rather than relying on the inline-text exemption. */}
+          <nav aria-label="Legal and support" className="flex flex-wrap gap-x-4">
+            {[
+              { href: "/privacy", label: "Privacy" },
+              { href: "/terms", label: "Terms" },
+              { href: "/support", label: "Support" },
+            ].map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="flex items-center px-1"
+                style={{ color: "var(--color-muted)", minHeight: "44px" }}
+              >
+                {link.label}
+              </Link>
+            ))}
           </nav>
         </footer>
       </body>
