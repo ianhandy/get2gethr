@@ -1,13 +1,17 @@
-import { Resend } from "resend";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "./db";
 import { emailDeliveries, type EmailKind, type Event, type ProposedSlot } from "./db/schema";
 import { buildIcsEvent, icsAttachment } from "./ics";
 
-let cachedClient: Resend | null = null;
-function resend(): Resend {
-  if (!cachedClient) cachedClient = new Resend(process.env.RESEND_API_KEY);
+let cachedClient: SESv2Client | null = null;
+function ses(): SESv2Client {
+  if (!cachedClient) {
+    cachedClient = new SESv2Client({
+      region: process.env.AWS_SES_REGION ?? "us-east-1",
+    });
+  }
   return cachedClient;
 }
 
@@ -131,6 +135,61 @@ export interface OutboundEmail {
   attachments?: Array<{ filename: string; content: string; contentType: string }>;
 }
 
+function cleanHeader(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+function encodeHeader(value: string): string {
+  return `=?UTF-8?B?${Buffer.from(cleanHeader(value), "utf8").toString("base64")}?=`;
+}
+
+function wrapBase64(value: string): string {
+  return value.match(/.{1,76}/g)?.join("\r\n") ?? "";
+}
+
+/** Builds the raw MIME message required for HTML, text, and ICS in one SES send. */
+export function buildRawEmail(email: OutboundEmail, from = senderAddress()): Uint8Array {
+  const mixedBoundary = `mixed-${uuidv4()}`;
+  const alternativeBoundary = `alternative-${uuidv4()}`;
+  const lines = [
+    `From: ${cleanHeader(from)}`,
+    `To: ${cleanHeader(email.to)}`,
+    `Subject: ${encodeHeader(email.subject)}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary=\"${mixedBoundary}\"`,
+    "",
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/alternative; boundary=\"${alternativeBoundary}\"`,
+    "",
+    `--${alternativeBoundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    wrapBase64(Buffer.from(email.text, "utf8").toString("base64")),
+    `--${alternativeBoundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    wrapBase64(Buffer.from(email.html, "utf8").toString("base64")),
+    `--${alternativeBoundary}--`,
+  ];
+
+  for (const attachment of email.attachments ?? []) {
+    const filename = cleanHeader(attachment.filename).replace(/[\"]/g, "_");
+    lines.push(
+      `--${mixedBoundary}`,
+      `Content-Type: ${cleanHeader(attachment.contentType)}; name=\"${filename}\"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; filename=\"${filename}\"`,
+      "",
+      wrapBase64(attachment.content)
+    );
+  }
+
+  lines.push(`--${mixedBoundary}--`, "");
+  return Buffer.from(lines.join("\r\n"), "utf8");
+}
+
 export interface SendOptions {
   eventId: string;
   participantId?: string | null;
@@ -189,37 +248,40 @@ export async function sendTrackedEmail(
   }
 
   try {
-    const response = await resend().emails.send({
-      from: senderAddress(),
-      to: email.to,
-      subject: email.subject,
-      html: email.html,
-      text: email.text,
-      attachments: email.attachments?.map((attachment) => ({
-        filename: attachment.filename,
-        content: attachment.content,
-        contentType: attachment.contentType,
-      })),
-    });
-
-    if (response.error) throw new Error(response.error.message);
+    const response = await ses().send(
+      new SendEmailCommand({
+        FromEmailAddress: senderAddress(),
+        Destination: { ToAddresses: [email.to] },
+        Content: { Raw: { Data: buildRawEmail(email) } },
+        ConfigurationSetName: process.env.AWS_SES_CONFIGURATION_SET || undefined,
+        EmailTags: [{ Name: "kind", Value: options.kind }],
+      })
+    );
 
     await db
       .update(emailDeliveries)
       .set({
         status: "sent",
-        providerMessageId: response.data?.id ?? null,
+        providerMessageId: response.MessageId ?? null,
         error: null,
         attempts: (existing?.attempts ?? 0) + 1,
         updatedAt: Math.floor(Date.now() / 1000),
       })
       .where(eq(emailDeliveries.id, deliveryId));
 
-    return { status: "sent", messageId: response.data?.id ?? null };
+    return { status: "sent", messageId: response.MessageId ?? null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // 4xx-shaped failures are permanent; anything else is worth retrying.
-    const retryable = !/invalid|not found|unsupported|forbidden/i.test(message);
+    const metadata =
+      error && typeof error === "object" && "$metadata" in error
+        ? (error.$metadata as { httpStatusCode?: number })
+        : undefined;
+    const status = metadata?.httpStatusCode;
+    const name = error instanceof Error ? error.name : "";
+    const retryable =
+      status === 429 ||
+      (status !== undefined && status >= 500) ||
+      /throttl|timeout|serviceunavailable/i.test(`${name} ${message}`);
 
     await db
       .update(emailDeliveries)

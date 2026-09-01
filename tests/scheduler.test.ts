@@ -1,23 +1,36 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Resend is stubbed before any app module imports it, so nothing leaves the
+// SES is stubbed before any app module imports it, so nothing leaves the
 // machine and every send is inspectable.
 const sentEmails: Array<{ to: string; subject: string; attachments?: unknown[] }> = [];
 let emailFailure: string | null = null;
 
-vi.mock("resend", () => ({
-  Resend: class {
-    emails = {
-      send: async (payload: {
-        to: string;
-        subject: string;
-        attachments?: unknown[];
-      }) => {
-        if (emailFailure) return { data: null, error: { message: emailFailure } };
-        sentEmails.push(payload);
-        return { data: { id: `msg-${sentEmails.length}` }, error: null };
-      },
-    };
+vi.mock("@aws-sdk/client-sesv2", () => ({
+  SendEmailCommand: class {
+    constructor(public input: {
+      Destination: { ToAddresses: string[] };
+      Content: { Raw: { Data: Uint8Array } };
+    }) {}
+  },
+  SESv2Client: class {
+    async send(command: {
+      input: {
+        Destination: { ToAddresses: string[] };
+        Content: { Raw: { Data: Uint8Array } };
+      };
+    }) {
+      if (emailFailure) throw new Error(emailFailure);
+      const raw = Buffer.from(command.input.Content.Raw.Data).toString("utf8");
+      const encodedSubject = raw.match(/^Subject: =\?UTF-8\?B\?(.+)\?=$/m)?.[1];
+      sentEmails.push({
+        to: command.input.Destination.ToAddresses[0],
+        subject: encodedSubject
+          ? Buffer.from(encodedSubject, "base64").toString("utf8")
+          : "",
+        attachments: raw.match(/^Content-Disposition: attachment;/gm) ?? [],
+      });
+      return { MessageId: `msg-${sentEmails.length}` };
+    }
   },
 }));
 
@@ -53,11 +66,19 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  // These scenarios use a fixed August 2026 scheduling window. Pin "now" so
+  // the suite remains deterministic after that date instead of silently
+  // treating every candidate as historical.
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-30T12:00:00Z"));
   await resetDatabase();
   sentEmails.length = 0;
   emailFailure = null;
   broker = new FakeCalendarBroker();
   __setBrokerForTesting("fake", broker);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 function at(date: string, time: string, tz = NY): number {

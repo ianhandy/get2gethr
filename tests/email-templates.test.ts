@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRawEmail,
   confirmationEmail,
   escapeHtml,
   escapeUrl,
@@ -23,6 +24,50 @@ const SLOT = {
   startTime: Math.floor(Date.UTC(2026, 7, 31, 13, 0) / 1000),
   endTime: Math.floor(Date.UTC(2026, 7, 31, 14, 0) / 1000),
 };
+
+describe("SES MIME message", () => {
+  it("contains text, HTML, and an ICS attachment", () => {
+    const raw = Buffer.from(
+      buildRawEmail(
+        {
+          to: "guest@example.com",
+          subject: "Confirmed: Weekly Sync",
+          text: "Confirmed",
+          html: "<strong>Confirmed</strong>",
+          attachments: [
+            {
+              filename: "invite.ics",
+              content: Buffer.from("BEGIN:VCALENDAR", "utf8").toString("base64"),
+              contentType: "text/calendar; method=REQUEST; charset=UTF-8",
+            },
+          ],
+        },
+        "get2gethr <hello@get2gethr.app>"
+      )
+    ).toString("utf8");
+
+    expect(raw).toContain("Content-Type: multipart/mixed");
+    expect(raw).toContain("Content-Type: multipart/alternative");
+    expect(raw).toContain('Content-Disposition: attachment; filename="invite.ics"');
+    expect(raw).toContain(Buffer.from("Confirmed", "utf8").toString("base64"));
+  });
+
+  it("removes header injection characters", () => {
+    const raw = Buffer.from(
+      buildRawEmail(
+        {
+          to: "guest@example.com\r\nBcc: attacker@example.com",
+          subject: "Hello\r\nBcc: attacker@example.com",
+          text: "Hello",
+          html: "<p>Hello</p>",
+        },
+        "get2gethr <hello@get2gethr.app>"
+      )
+    ).toString("utf8");
+
+    expect(raw).not.toContain("\r\nBcc:");
+  });
+});
 
 describe("escapeHtml", () => {
   it("escapes every character that can start markup", () => {

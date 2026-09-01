@@ -29,7 +29,8 @@ npm run check     # lint + typecheck + tests + production dependency audit
 | `TURSO_DATABASE_URL` | Database. |
 | `TURSO_AUTH_TOKEN` | Database. |
 | `ENCRYPTION_KEY` | Encrypts calendar credentials at rest (AES-256-GCM). |
-| `RESEND_API_KEY` | Email delivery. |
+| `AWS_SES_REGION` | Region containing the verified SES identity. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Least-privilege SES sender credentials. Prefer temporary role credentials when the runtime supports them. |
 | `EMAIL_FROM` | **No default any more.** A verified sending domain; the app throws rather than silently sending from `example.com`. |
 | `NEXT_PUBLIC_BASE_URL` | Absolute base for invite links and OAuth redirects. |
 
@@ -47,6 +48,8 @@ start a calendar connection rather than producing a broken authorization URL.
 | `AUTO_MIGRATE` | off | Runs migrations on first request. **Development only.** |
 | `APPLE_TEAM_ID` / `APPLE_BUNDLE_ID` | current values | Feed the app-site-association file. |
 | `NEXT_PUBLIC_SUPPORT_EMAIL` | `support@get2gethr.app` | Shown on the policy pages. |
+| `AWS_SES_CONFIGURATION_SET` | — | SES configuration set that publishes delivery, bounce, and complaint events. |
+| `AWS_SNS_TOPIC_ARN` | — | Restricts the SES webhook to one expected SNS topic. |
 
 Separate preview from production credentials, and rotate anything whose history
 is uncertain.
@@ -81,7 +84,10 @@ callback in the app would break calendar connection.
 
 ## Email deliverability
 
-- Verify the sending domain in Resend and publish **SPF, DKIM, and DMARC**.
+- Verify the sending domain in Amazon SES and publish **DKIM and DMARC**. Use a
+  custom MAIL FROM domain when SPF alignment is required.
+- Move SES out of the sandbox, create a configuration set, and publish delivery,
+  bounce, and complaint events to the SNS topic consumed by `/api/webhooks/ses`.
 - Send a test to a Gmail and an Outlook address; check both land in the inbox.
 - Confirm the `email_deliveries` table records sends — failures are recorded and
   resendable rather than discarded.
