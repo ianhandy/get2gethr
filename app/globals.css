@@ -277,6 +277,7 @@ body:has(.ios-form) .site-header p {
   background: var(--color-accent-a);
   color: var(--color-on-accent);
   font-weight: 700;
+  text-transform: lowercase;
   transition: filter 140ms ease, transform 140ms ease, opacity 140ms ease;
 }
 
