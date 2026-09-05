@@ -1,141 +1,208 @@
-import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import {
-  addMinutes,
-  getDay,
-  getHours,
-  getMinutes,
-  startOfDay,
-} from "date-fns";
+  enumerateLocalDates,
+  localDateWeekday,
+  parseWorkingHours,
+  zonedWallClockToUtcMs,
+  type LocalDate,
+} from "./time";
+import {
+  HOUR_SLOTS_PER_DAY,
+  isBlockedWeeklyState,
+  mondayFirstDayIndex,
+  weeklySlotIndex,
+  type WeeklySlotState,
+} from "./weekly-availability";
 
-type Interval = [number, number]; // [startMs, endMs]
+/** A half-open interval of real time, `[startMs, endMs)`, in UTC milliseconds. */
+export type Interval = [number, number];
 
-/** Merge overlapping/adjacent busy intervals into a sorted, non-overlapping list */
-function mergeBusy(intervals: Interval[]): Interval[] {
-  if (intervals.length === 0) return [];
-  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
-  const merged: Interval[] = [sorted[0]];
-  for (let i = 1; i < sorted.length; i++) {
+export const DEFAULT_GRANULARITY_MINUTES = 30;
+
+/**
+ * Merge overlapping and touching busy intervals into a sorted, disjoint list.
+ * Input is never mutated.
+ */
+export function mergeBusy(intervals: Interval[]): Interval[] {
+  const sorted = intervals
+    .filter(([start, end]) => end > start)
+    .map(([start, end]): Interval => [start, end])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+  const merged: Interval[] = [];
+  for (const interval of sorted) {
     const last = merged[merged.length - 1];
-    if (sorted[i][0] <= last[1]) {
-      last[1] = Math.max(last[1], sorted[i][1]);
+    if (last && interval[0] <= last[1]) {
+      last[1] = Math.max(last[1], interval[1]);
     } else {
-      merged.push(sorted[i]);
+      merged.push(interval);
     }
   }
   return merged;
 }
 
-interface AvailabilityOptions {
-  dateRangeStartMs: number;
-  dateRangeEndMs: number;
-  durationMinutes: number;
-  workingHoursStart: string; // "HH:mm"
-  workingHoursEnd: string;   // "HH:mm"
+export interface CandidateSlotRequest {
+  /** First calendar date of the window, in `timezone`. Inclusive. */
+  startDate: LocalDate;
+  /** Last calendar date of the window, in `timezone`. Inclusive. */
+  endDate: LocalDate;
   timezone: string;
+  durationMinutes: number;
+  /** `HH:mm` in `timezone`. */
+  workingHoursStart: string;
+  /** `HH:mm` in `timezone`; `24:00` is allowed. */
+  workingHoursEnd: string;
   excludeWeekends: boolean;
-  participantBusySlots: Interval[][]; // One array per joined participant
+  /** Monday-first, 24 hourly cells per day. Overrides legacy day bounds. */
+  weeklyAvailability?: WeeklySlotState[] | null;
+  /** One busy list per participant. Empty list means "free all window". */
+  busyByParticipant: Interval[][];
+  /** Slot starts land on multiples of this many minutes past the window start. */
+  granularityMinutes?: number;
+  /** Slots starting before this instant are dropped. Defaults to no floor. */
+  notBeforeMs?: number;
+  /** Safety valve so a wide window cannot generate unbounded work. */
+  maxSlots?: number;
 }
 
 /**
- * Compute all free candidate slots where every participant is available.
- * Returns sorted [startMs, endMs] pairs in UTC.
+ * Every slot inside the window where no participant is busy.
+ *
+ * Ranking is deterministic and total: earliest start first, then earliest end.
+ * Two runs over the same inputs always produce the same ordered list, which is
+ * what lets the scheduler resume, retry, and re-propose without drifting.
+ *
+ * Days are walked as calendar dates rather than by adding 24 hours, and each
+ * day's working window is resolved as a wall clock in `timezone`, so a
+ * daylight-saving day contributes exactly its real hours.
  */
-export function computeFreeSlots(options: AvailabilityOptions): Interval[] {
+export function computeCandidateSlots(request: CandidateSlotRequest): Interval[] {
   const {
-    dateRangeStartMs,
-    dateRangeEndMs,
-    durationMinutes,
-    workingHoursStart,
-    workingHoursEnd,
+    startDate,
+    endDate,
     timezone,
+    durationMinutes,
     excludeWeekends,
-    participantBusySlots,
-  } = options;
+    busyByParticipant,
+    granularityMinutes = DEFAULT_GRANULARITY_MINUTES,
+    notBeforeMs,
+    maxSlots = 5000,
+    weeklyAvailability,
+  } = request;
 
-  // Union of all participants' busy times
-  const allBusy = mergeBusy(participantBusySlots.flat());
-
-  const durationMs = durationMinutes * 60 * 1000;
-  const freeSlots: Interval[] = [];
-
-  // Parse working hours as minutes-from-midnight
-  const [whStartH, whStartM] = workingHoursStart.split(":").map(Number);
-  const [whEndH, whEndM] = workingHoursEnd.split(":").map(Number);
-  const whStartMinutes = whStartH * 60 + whStartM;
-  const whEndMinutes = whEndH * 60 + whEndM;
-
-  // Iterate day by day within the date range
-  let dayStart = startOfDay(toZonedTime(dateRangeStartMs, timezone));
-
-  while (true) {
-    const dayStartMs = fromZonedTime(dayStart, timezone).getTime();
-    if (dayStartMs >= dateRangeEndMs) break;
-
-    const dayOfWeek = getDay(dayStart); // 0=Sun, 6=Sat
-    if (excludeWeekends && (dayOfWeek === 0 || dayOfWeek === 6)) {
-      dayStart = addMinutes(dayStart, 24 * 60);
-      continue;
-    }
-
-    // Working window for this day (in UTC ms)
-    const windowStartMs = fromZonedTime(
-      addMinutes(startOfDay(dayStart), whStartMinutes),
-      timezone
-    ).getTime();
-    const windowEndMs = fromZonedTime(
-      addMinutes(startOfDay(dayStart), whEndMinutes),
-      timezone
-    ).getTime();
-
-    // Clamp to overall date range
-    const effectiveStart = Math.max(windowStartMs, dateRangeStartMs);
-    const effectiveEnd = Math.min(windowEndMs, dateRangeEndMs);
-
-    if (effectiveStart >= effectiveEnd) {
-      dayStart = addMinutes(dayStart, 24 * 60);
-      continue;
-    }
-
-    // Find free slots within this working window
-    let cursor = effectiveStart;
-    for (const [busyStart, busyEnd] of allBusy) {
-      if (busyStart >= effectiveEnd) break;
-      if (busyEnd <= cursor) continue;
-
-      // Gap before this busy block
-      if (busyStart > cursor && busyStart - cursor >= durationMs) {
-        freeSlots.push([cursor, Math.min(busyStart, effectiveEnd)]);
-      }
-      cursor = Math.max(cursor, busyEnd);
-    }
-
-    // Remaining gap after last busy block
-    if (effectiveEnd - cursor >= durationMs) {
-      freeSlots.push([cursor, effectiveEnd]);
-    }
-
-    dayStart = addMinutes(dayStart, 24 * 60);
+  if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
+    throw new Error(`durationMinutes must be a positive integer`);
+  }
+  if (!Number.isInteger(granularityMinutes) || granularityMinutes <= 0) {
+    throw new Error(`granularityMinutes must be a positive integer`);
   }
 
-  return freeSlots;
+  const legacyWindow = parseWorkingHours(
+    request.workingHoursStart,
+    request.workingHoursEnd
+  );
+  const startMinutes = weeklyAvailability ? 0 : legacyWindow.startMinutes;
+  const endMinutes = weeklyAvailability ? 24 * 60 : legacyWindow.endMinutes;
+
+  // A meeting longer than the working day can never fit; say so by returning
+  // nothing rather than by looping over every day to discover it.
+  if (durationMinutes > endMinutes - startMinutes) return [];
+
+  const busy = mergeBusy(busyByParticipant.flat());
+  const durationMs = durationMinutes * 60 * 1000;
+  const slots: Array<{
+    interval: Interval;
+    preference: number;
+  }> = [];
+
+  for (const date of enumerateLocalDates(startDate, endDate)) {
+    const weekday = localDateWeekday(date);
+    if (!weeklyAvailability && excludeWeekends) {
+      if (weekday === 0 || weekday === 6) continue;
+    }
+
+    const windowEndMs = zonedWallClockToUtcMs(date, endMinutes, timezone);
+
+    for (
+      let offset = startMinutes;
+      offset + durationMinutes <= endMinutes;
+      offset += granularityMinutes
+    ) {
+      const slotStartMs = zonedWallClockToUtcMs(date, offset, timezone);
+      const slotEndMs = slotStartMs + durationMs;
+
+      // A spring-forward gap can push a wall-clock start past the window end.
+      if (slotEndMs > windowEndMs) continue;
+      if (notBeforeMs !== undefined && slotStartMs < notBeforeMs) continue;
+      if (overlapsBusy(slotStartMs, slotEndMs, busy)) continue;
+
+      const preference = weeklyAvailability
+        ? weeklyPreference(
+            weeklyAvailability,
+            mondayFirstDayIndex(weekday),
+            offset,
+            durationMinutes
+          )
+        : 0;
+      if (preference === null) continue;
+
+      slots.push({
+        interval: [slotStartMs, slotEndMs],
+        preference,
+      });
+    }
+  }
+
+  return slots
+    .sort(
+      (a, b) =>
+        b.preference - a.preference ||
+        a.interval[0] - b.interval[0] ||
+        a.interval[1] - b.interval[1]
+    )
+    .slice(0, maxSlots)
+    .map(({ interval }) => interval);
 }
 
-/** Chop free slots into exact-duration blocks starting on 30-min boundaries */
-export function chopIntoSlots(freeSlots: Interval[], durationMinutes: number): Interval[] {
-  const durationMs = durationMinutes * 60 * 1000;
-  const slots: Interval[] = [];
+function weeklyPreference(
+  availability: WeeklySlotState[],
+  dayIndex: number,
+  startMinutes: number,
+  durationMinutes: number
+): number | null {
+  const firstCell = Math.floor(startMinutes / 60);
+  const lastCell = Math.ceil((startMinutes + durationMinutes) / 60);
+  if (firstCell < 0 || lastCell > HOUR_SLOTS_PER_DAY) return null;
 
-  for (const [freeStart, freeEnd] of freeSlots) {
-    // Round up to next 30-min boundary
-    const thirtyMin = 30 * 60 * 1000;
-    const snapped = Math.ceil(freeStart / thirtyMin) * thirtyMin;
-    let start = snapped;
-
-    while (start + durationMs <= freeEnd) {
-      slots.push([start, start + durationMs]);
-      start += thirtyMin; // Step by 30 min
-    }
+  let preferredCells = 0;
+  for (let cell = firstCell; cell < lastCell; cell += 1) {
+    const state = availability[weeklySlotIndex(dayIndex, cell)];
+    if (!state || isBlockedWeeklyState(state)) return null;
+    if (state === "preferred") preferredCells += 1;
   }
+  return preferredCells;
+}
 
-  return slots;
+/** True when `[startMs, endMs)` intersects any interval in a sorted busy list. */
+export function overlapsBusy(
+  startMs: number,
+  endMs: number,
+  sortedBusy: Interval[]
+): boolean {
+  for (const [busyStart, busyEnd] of sortedBusy) {
+    if (busyStart >= endMs) return false; // sorted, so nothing later can overlap
+    if (busyEnd > startMs) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a specific slot is still free. Used for the recheck immediately
+ * before a slot is proposed or written to a calendar, where availability may
+ * have changed since the candidates were generated.
+ */
+export function isSlotStillFree(
+  slot: Interval,
+  busyByParticipant: Interval[][]
+): boolean {
+  return !overlapsBusy(slot[0], slot[1], mergeBusy(busyByParticipant.flat()));
 }

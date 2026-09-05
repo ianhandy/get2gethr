@@ -1,216 +1,492 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { format } from "date-fns";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { DeviceScheduleScanner } from "@/components/device-schedule-scanner";
+import {
+  deviceCalendarPlatform,
+  readDeviceBusyTimes,
+  subscribeDeviceCalendarPlatform,
+} from "@/lib/device-calendar";
+
+interface ConnectionSummary {
+  status: "connected" | "relink_required" | "revoked";
+  provider: string;
+  accountEmail: string | null;
+  sourceCalendarCount: number;
+}
 
 interface InviteData {
-  participant: { id: string; email: string; name: string | null; status: "pending" | "joined" | "declined" };
   event: {
-    id: string; title: string; description: string | null;
-    initiatorName: string; initiatorEmail: string;
-    dateRangeStart: number; dateRangeEnd: number;
-    durationMinutes: number; timezone: string; status: string;
+    id: string;
+    title: string;
+    description: string | null;
+    organizerName: string;
+    startDate: string;
+    endDate: string;
+    durationMinutes: number;
+    timezone: string;
+    status: string;
+    calendarWriteStatus: string;
   };
+  viewer: {
+    role: "attendee" | "organizer";
+    id?: string;
+    email?: string;
+    status?: "pending" | "joined" | "declined" | "removed";
+    connection?: ConnectionSummary | null;
+    manualSchedule?: boolean;
+  };
+  others?: { total: number; joined: number; declined: number; pending: number };
+  currentSlot: { id: string; startTime: number; endTime: number } | null;
+  confirmedSlot: { id: string; startTime: number; endTime: number } | null;
+  providers: string[];
+}
+
+/** Human-readable messages for every way a connection can fail. */
+const CONNECT_ERRORS: Record<string, string> = {
+  denied:
+    "The calendar connection was cancelled. Nothing was shared, and you can try again whenever you like.",
+  account_mismatch:
+    "That calendar belongs to a different email address. Sign in with the account this invitation was sent to.",
+  expired_state:
+    "That link timed out for security reasons. Start the connection again.",
+  replayed_state:
+    "That link had already been used. Start the connection again.",
+  invalid_state: "We couldn't verify that request. Start the connection again.",
+  provider_error:
+    "Your calendar provider couldn't complete the connection. Please try again in a moment.",
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+  google: "Google",
+  microsoft: "Microsoft 365 / Outlook",
+  apple: "Apple iCloud",
+  exchange: "Exchange",
+};
+
+function formatDateRange(startDate: string, endDate: string): string {
+  const format = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+  };
+  return startDate === endDate
+    ? format(startDate)
+    : `${format(startDate)} – ${format(endDate)}`;
 }
 
 export default function InvitePage() {
   const { token } = useParams<{ token: string }>();
   const searchParams = useSearchParams();
+  const reduceMotion = useReducedMotion();
+
   const [data, setData] = useState<InviteData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [declining, setDeclining] = useState(false);
-  const [declined, setDeclined] = useState(false);
+  const devicePlatform = useSyncExternalStore(
+    subscribeDeviceCalendarPlatform,
+    deviceCalendarPlatform,
+    () => null
+  );
+  const [readingDeviceCalendar, setReadingDeviceCalendar] = useState(false);
+  const [deviceCalendarError, setDeviceCalendarError] = useState<string | null>(null);
 
-  const justJoined   = searchParams.get("joined")  === "true";
-  const alreadyJoined = searchParams.get("already") === "joined";
-  const oauthError   = searchParams.get("error");
+  const connectError = searchParams.get("error");
+  const justConnected = searchParams.get("connected") === "1";
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/invite/${token}`);
+      const body = await response.json();
+      if (!response.ok) setError(body.error ?? "We couldn't load this invitation.");
+      else setData(body);
+    } catch {
+      setError("We couldn't reach the server. Check your connection and try again.");
+    }
+  }, [token]);
 
   useEffect(() => {
-    fetch(`/api/invite/${token}`)
-      .then((r) => r.json())
-      .then((d) => { if (d.error) setError(d.error); else setData(d); })
-      .catch(() => setError("Failed to load invitation."));
+    // `ignore` drops the result of a request whose token is already stale, so
+    // a fast navigation cannot land older data on a newer invitation.
+    let ignore = false;
+    void (async () => {
+      const response = await fetch(`/api/invite/${token}`).catch(() => null);
+      if (ignore) return;
+      if (!response) {
+        setError("We couldn't reach the server. Check your connection and try again.");
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (ignore) return;
+      if (!response.ok || !body) {
+        setError(body?.error ?? "We couldn't load this invitation.");
+      } else {
+        setData(body);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
   }, [token]);
 
   async function handleDecline() {
     setDeclining(true);
     try {
-      const res = await fetch(`/api/invite/${token}/decline`, { method: "POST" });
-      if (res.ok) setDeclined(true);
-      else setError("Failed to decline. You may have already responded.");
-    } finally { setDeclining(false); }
+      const response = await fetch(`/api/invite/${token}/decline`, { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) setError(body.error ?? "We couldn't record that.");
+      else await load();
+    } catch {
+      setError("We couldn't reach the server. Please try again.");
+    } finally {
+      setDeclining(false);
+    }
   }
 
-  if (error) return (
-    <div className="rounded-2xl border p-8 text-center" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-      <p className="text-sm" style={{ color: "var(--color-accent-a)" }}>{error}</p>
-    </div>
-  );
+  async function handleDeviceCalendar() {
+    if (!data) return;
+    setReadingDeviceCalendar(true);
+    setDeviceCalendarError(null);
+    try {
+      const result = await readDeviceBusyTimes({
+        startDate: data.event.startDate,
+        endDate: data.event.endDate,
+        timeZone: data.event.timezone,
+      });
+      const response = await fetch(`/api/invite/${token}/device-calendar`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ intervals: result.intervals }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error ?? "We couldn't add your busy times.");
+      }
+      await load();
+    } catch (deviceError) {
+      setDeviceCalendarError(
+        deviceError instanceof Error
+          ? deviceError.message
+          : "We couldn't read your calendars."
+      );
+    } finally {
+      setReadingDeviceCalendar(false);
+    }
+  }
 
-  if (!data) return (
-    <div className="flex items-center gap-3 text-sm" style={{ color: "var(--color-muted)" }}>
-      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-      Loading invitation…
-    </div>
-  );
+  const fade = reduceMotion
+    ? {}
+    : { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } };
 
-  const { participant, event } = data;
-  const startFmt = format(new Date(event.dateRangeStart * 1000), "MMM d, yyyy");
-  const endFmt   = format(new Date(event.dateRangeEnd   * 1000), "MMM d, yyyy");
-
-  if (participant.status === "joined" || justJoined || alreadyJoined) {
+  if (error) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="rounded-2xl border p-10 text-center"
+      <div
+        role="alert"
+        className="ios-card rounded-2xl border p-8 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-2xl"
-          style={{ background: "color-mix(in srgb, var(--color-accent-c) 20%, transparent)" }}>
-          ✓
-        </div>
-        <h1 className="font-display mb-2 text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-          You&apos;re in!
+        <p className="text-sm" style={{ color: "var(--color-danger)" }}>
+          {error}
+        </p>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <p role="status" className="text-sm" style={{ color: "var(--color-muted)" }}>
+        Loading invitation…
+      </p>
+    );
+  }
+
+  const { event, viewer } = data;
+  const connected =
+    viewer.status === "joined" &&
+    (viewer.connection?.status === "connected" || viewer.manualSchedule === true);
+
+  if (viewer.status === "declined") {
+    return (
+      <motion.div
+        {...fade}
+        className="ios-card rounded-2xl border p-10 text-center"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      >
+        <h1
+          className="font-display mb-2 text-2xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          Invitation declined
         </h1>
         <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-          Calendar connected for <strong>{event.title}</strong>. We&apos;ll email you at{" "}
-          <strong>{participant.email}</strong> when a time is proposed.
+          You let {event.organizerName} know you can&rsquo;t make{" "}
+          <strong>{event.title}</strong>.
         </p>
       </motion.div>
     );
   }
 
-  if (participant.status === "declined" || declined) {
+  if (connected) {
     return (
       <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        className="rounded-2xl border p-10 text-center"
+        {...fade}
+        className="ios-card rounded-2xl border p-10 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        <h1 className="font-display mb-2 text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-          Invitation Declined
+        <h1
+          className="font-display mb-3 text-2xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          You&rsquo;re all set
         </h1>
         <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-          You&apos;ve declined the invitation to <strong>{event.title}</strong>.
+          {viewer.manualSchedule && !viewer.connection
+            ? "Your busy times are included."
+            : "Your calendar is connected."}{" "}
+          We&rsquo;ll email <strong>{viewer.email}</strong> as soon as there&rsquo;s a time to
+          confirm.
         </p>
+
+        {viewer.connection && (
+          <dl
+            className="mx-auto mt-6 max-w-sm space-y-2 rounded-xl p-4 text-left text-sm"
+            style={{ background: "var(--color-bg)" }}
+          >
+            <ConnectionRow
+              label="Account"
+              value={viewer.connection.accountEmail ?? viewer.email ?? "Connected"}
+            />
+            <ConnectionRow
+              label="Provider"
+              value={PROVIDER_LABELS[viewer.connection.provider] ?? viewer.connection.provider}
+            />
+            <ConnectionRow
+              label="Calendars read"
+              value={`${viewer.connection.sourceCalendarCount} calendar${
+                viewer.connection.sourceCalendarCount === 1 ? "" : "s"
+              }`}
+            />
+          </dl>
+        )}
+
+        {data.others && (
+          <p className="mt-5 text-sm" style={{ color: "var(--color-muted)" }}>
+            {data.others.joined} of {data.others.total + 1} people connected so far.
+          </p>
+        )}
+
+        {viewer.role === "attendee" && devicePlatform && (
+          <button
+            type="button"
+            onClick={handleDeviceCalendar}
+            disabled={readingDeviceCalendar}
+            className="mt-5 min-h-11 rounded-lg px-4 text-sm font-semibold transition-colors hover:underline disabled:opacity-50 focus:outline-none focus:ring-2 [--tw-ring-color:var(--color-accent-c)]"
+            style={{ color: "var(--color-accent-a)" }}
+          >
+            {readingDeviceCalendar ? "checking calendars…" : "refresh busy times"}
+          </button>
+        )}
+
+        {viewer.role === "attendee" && devicePlatform === "ios" && (
+          <div className="mt-3">
+            <DeviceScheduleScanner
+              token={token}
+              event={event}
+              onSaved={load}
+              label="scan another schedule"
+            />
+          </div>
+        )}
+
+        {deviceCalendarError && (
+          <p className="mt-3 text-sm" role="alert" style={{ color: "var(--color-danger)" }}>
+            {deviceCalendarError}
+          </p>
+        )}
       </motion.div>
     );
   }
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.div {...fade}>
         <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-muted)" }}>
-          Invitation from {event.initiatorName}
+          Invitation from {event.organizerName}
         </p>
-        <h1 className="font-display text-3xl font-bold" style={{ color: "var(--color-primary)" }}>
+        <h1
+          className="font-display text-3xl font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
           {event.title}
         </h1>
         {event.description && (
-          <p className="mt-2 text-sm" style={{ color: "var(--color-muted)" }}>{event.description}</p>
+          <p className="mt-2 text-sm" style={{ color: "var(--color-muted)" }}>
+            {event.description}
+          </p>
         )}
       </motion.div>
 
-      {/* Event details card */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-        className="rounded-2xl border p-6 space-y-3"
+      <section
+        className="ios-card rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+        aria-label="Meeting details"
       >
-        {/* Calendar decoration */}
-        <div className="flex items-start justify-between">
-          <div className="space-y-3 flex-1">
-            <InfoRow label="Invited as" value={participant.email} />
-            <InfoRow label="Date window" value={`${startFmt} – ${endFmt}`} />
-            <InfoRow label="Duration" value={`${event.durationMinutes} minutes`} />
-            <InfoRow label="Timezone" value={event.timezone} />
-          </div>
-          <CalendarIllustration />
-        </div>
-      </motion.div>
+        <dl className="space-y-3">
+          {viewer.email && <ConnectionRow label="Invited as" value={viewer.email} />}
+          <ConnectionRow
+            label="Date window"
+            value={formatDateRange(event.startDate, event.endDate)}
+          />
+          <ConnectionRow label="Length" value={`${event.durationMinutes} minutes`} />
+          <ConnectionRow label="Times shown in" value={event.timezone} />
+        </dl>
+      </section>
 
-      {oauthError && (
-        <div className="rounded-xl px-4 py-3 text-sm"
-          style={{ background: "#FFF5F3", color: "var(--color-accent-a)", border: "1px solid #FDDDD6" }}>
-          There was a problem connecting your Google Calendar. Please try again.
+      {connectError && (
+        <div
+          role="alert"
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{
+            background: "var(--color-danger-surface)",
+            color: "var(--color-danger)",
+            border: "1px solid color-mix(in srgb, var(--color-danger) 28%, transparent)",
+          }}
+        >
+          {CONNECT_ERRORS[connectError] ?? CONNECT_ERRORS.provider_error}
         </div>
       )}
 
-      {/* Connect button */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}>
-        <div className="rounded-2xl border p-6" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-          <h2 className="font-display mb-2 text-lg font-bold" style={{ color: "var(--color-primary)" }}>
-            Connect Your Calendar
-          </h2>
-          <p className="mb-5 text-sm" style={{ color: "var(--color-muted)" }}>
-            We only request <strong>read-only free/busy access</strong> — we cannot see your event details.
-          </p>
-          <motion.a
-            href={`/api/auth/google?token=${token}`}
-            whileHover={{ scale: 1.02, y: -2 }}
-            whileTap={{ scale: 0.97 }}
-            className="inline-flex items-center gap-3 rounded-2xl px-6 py-3.5 text-sm font-semibold text-white shadow-md transition-shadow hover:shadow-lg"
-            style={{ background: "var(--color-accent-a)" }}
-          >
-            <GoogleIcon />
-            Connect Google Calendar
-          </motion.a>
-        </div>
-      </motion.div>
-
-      <AnimatePresence>
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-          className="text-center"
+      {justConnected && !connected && (
+        <div
+          role="status"
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{ background: "var(--color-bg)", color: "var(--color-primary)" }}
         >
-          <button
-            onClick={handleDecline} disabled={declining}
-            className="text-sm transition-colors hover:underline disabled:opacity-50"
-            style={{ color: "var(--color-muted)" }}
-          >
-            {declining ? "Declining…" : "I can't make it — decline invitation"}
-          </button>
-        </motion.div>
-      </AnimatePresence>
+          Finishing up your connection…
+        </div>
+      )}
+
+      {deviceCalendarError && (
+        <div
+          role="alert"
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{
+            background: "var(--color-danger-surface)",
+            color: "var(--color-danger)",
+          }}
+        >
+          {deviceCalendarError}
+        </div>
+      )}
+
+      <section
+        className="ios-card rounded-2xl border p-6"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      >
+        <h2
+          className="font-display mb-2 text-lg font-bold"
+          style={{ color: "var(--color-primary)" }}
+        >
+          Connect your calendar
+        </h2>
+        <p className="mb-4 text-sm" style={{ color: "var(--color-muted)" }}>
+          We read <strong>only when you&rsquo;re busy</strong> — never your event titles,
+          guests, or notes.
+        </p>
+
+        {data.providers.length > 1 && (
+          <p className="mb-4 text-sm" style={{ color: "var(--color-muted)" }}>
+            Works with{" "}
+            {data.providers
+              .filter((provider) => provider !== "other")
+              .map((provider) => PROVIDER_LABELS[provider] ?? provider)
+              .join(", ")}
+            .
+          </p>
+        )}
+
+        {viewer.role === "attendee" && devicePlatform && (
+          <>
+            <button
+              type="button"
+              onClick={handleDeviceCalendar}
+              disabled={readingDeviceCalendar}
+              className="inline-flex w-full items-center justify-center rounded-xl px-6 text-base font-semibold shadow-md transition-shadow hover:shadow-lg disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+              style={{
+                background: "var(--color-accent-a)",
+                color: "var(--color-on-accent)",
+                minHeight: "52px",
+              }}
+            >
+              {readingDeviceCalendar
+                ? "checking calendars…"
+                : `Use calendars on this ${devicePlatform === "ios" ? "iPhone" : "device"}`}
+            </button>
+            <div className="my-4 flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1" style={{ background: "var(--color-border)" }} />
+              <span className="text-xs" style={{ color: "var(--color-muted)" }}>or</span>
+              <span className="h-px flex-1" style={{ background: "var(--color-border)" }} />
+            </div>
+          </>
+        )}
+
+        <a
+          href={`/api/calendar/connect?token=${encodeURIComponent(token)}`}
+          className="inline-flex w-full items-center justify-center rounded-xl px-6 text-base font-semibold shadow-md transition-shadow hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+          style={{
+            background: "var(--color-accent-a)",
+            color: "var(--color-on-accent)",
+            minHeight: "52px",
+          }}
+        >
+          Connect calendar
+        </a>
+
+        {viewer.role === "attendee" && devicePlatform === "ios" && (
+          <div className="mt-3">
+            <DeviceScheduleScanner token={token} event={event} onSaved={load} />
+          </div>
+        )}
+
+        {!devicePlatform && data.providers.includes("apple") && (
+          <p className="mt-4 text-xs" style={{ color: "var(--color-muted)" }}>
+            Apple iCloud needs an app-specific password, which you&rsquo;ll be asked for
+            during setup.
+          </p>
+        )}
+      </section>
+
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={handleDecline}
+          disabled={declining}
+          className="rounded-lg px-4 text-sm transition-colors hover:underline disabled:opacity-50 focus:outline-none focus:ring-2 [--tw-ring-color:var(--color-accent-c)]"
+          style={{ color: "var(--color-muted)", minHeight: "44px" }}
+        >
+          {declining ? "Declining…" : "I can't make it — decline"}
+        </button>
+      </div>
     </div>
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function ConnectionRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-4 text-sm">
-      <span className="w-24 flex-shrink-0" style={{ color: "var(--color-muted)" }}>{label}</span>
-      <span className="font-medium" style={{ color: "var(--color-primary)" }}>{value}</span>
+    // Wraps instead of clipping when the label or value is long.
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      <dt className="w-32 flex-shrink-0" style={{ color: "var(--color-muted)" }}>
+        {label}
+      </dt>
+      <dd className="min-w-0 flex-1 break-words font-medium" style={{ color: "var(--color-primary)" }}>
+        {value}
+      </dd>
     </div>
-  );
-}
-
-function CalendarIllustration() {
-  return (
-    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4" y="12" width="56" height="48" rx="6" fill="var(--color-accent-b)" opacity="0.25" />
-      <rect x="4" y="12" width="56" height="16" rx="6" fill="var(--color-accent-b)" opacity="0.5" />
-      <rect x="4" y="24" width="56" height="4" fill="var(--color-accent-b)" opacity="0.5" />
-      <line x1="20" y1="4" x2="20" y2="20" stroke="var(--color-accent-a)" strokeWidth="3" strokeLinecap="round" />
-      <line x1="44" y1="4" x2="44" y2="20" stroke="var(--color-accent-a)" strokeWidth="3" strokeLinecap="round" />
-      <circle cx="22" cy="42" r="4" fill="var(--color-accent-c)" />
-      <circle cx="32" cy="42" r="4" fill="var(--color-accent-a)" opacity="0.5" />
-    </svg>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-    </svg>
   );
 }

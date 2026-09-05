@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
@@ -47,3 +48,17 @@ next-env.d.ts
 
 # Drizzle generated migrations
 drizzle/
+
+# Xcode per-user state — machine-specific, and it churns on every open
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# macOS
+.DS_Store

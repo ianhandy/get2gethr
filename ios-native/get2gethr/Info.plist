@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Partial Info.plist. Xcode merges this with the keys it generates, so only
+	  what cannot be expressed as an INFOPLIST_KEY_ build setting lives here.
+	-->
+
+	<!--
+	  Private URL scheme.
+
+	  Shareable links are always HTTPS universal links; this scheme exists only
+	  so ASWebAuthenticationSession can hand control back to the app when a
+	  calendar connection finishes. Without it the session had nothing to
+	  return to and calendar authorization could never complete.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.ianhandy.get2gethr.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>get2gethr</string>
+			</array>
+		</dict>
+	</array>
+
+	<!--
+	  Backend base URL, so a staging or TestFlight build is a configuration
+	  change rather than a code change.
+	-->
+	<key>GET2GETHR_BASE_URL</key>
+	<string>$(GET2GETHR_BASE_URL)</string>
+
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of your schedule so busy times can be read on this iPhone.</string>
+
+	<!--
+	  Allows plain HTTP to a development server on the local machine.
+
+	  `NSAllowsLocalNetworking` covers localhost and .local names only; it does
+	  not weaken transport security for any public host and needs no App Store
+	  justification. Production traffic stays HTTPS-only.
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

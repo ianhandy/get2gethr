@@ -6,24 +6,54 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "db:backup": "node scripts/backup-turso.mjs",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "check": "npm run lint && npm run typecheck && npm test && npm run audit:prod",
+    "cap:sync": "cap sync",
+    "cap:ios": "cap open ios",
+    "cap:android": "cap open android"
+  },
+  "overrides": {
+    "ws": "^8.21.3",
+    "qs": "^6.16.0",
+    "glob": {
+      "minimatch": "^9.0.9",
+      "brace-expansion": "^5.0.9"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^10.2.6",
+      "brace-expansion": "^5.0.9"
+    },
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.12"
+    }
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1123.0",
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
     "@libsql/client": "^0.17.2",
+    "@vercel/oidc-aws-credentials-provider": "^3.3.5",
     "canvas-confetti": "^1.9.4",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "framer-motion": "^12.34.3",
     "googleapis": "^171.4.0",
-    "next": "16.1.6",
+    "next": "^16.3.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "resend": "^6.9.2",
-    "uuid": "^13.0.0",
+    "uuid": "^14.0.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@tailwindcss/postcss": "^4",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",
@@ -32,8 +62,10 @@
     "@types/uuid": "^11.0.0",
     "drizzle-kit": "^0.31.9",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "^16.3.3",
     "tailwindcss": "^4",
-    "typescript": "^5.9.3"
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   }
 }

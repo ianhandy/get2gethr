@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Universal links. The domain must serve
+	  /.well-known/apple-app-site-association over HTTPS as application/json
+	  with no redirect; the app's route handler does exactly that.
+
+	  `?mode=developer` is deliberately absent: it is only valid for local
+	  testing with the device's developer mode enabled, and shipping it would
+	  stop links from verifying in production.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:finda.day</string>
+		<string>webcredentials:finda.day</string>
+	</array>
+</dict>
+</plist>
