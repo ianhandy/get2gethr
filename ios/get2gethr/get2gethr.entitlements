@@ -13,8 +13,8 @@
 	-->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:get2gethr.app</string>
-		<string>webcredentials:get2gethr.app</string>
+		<string>applinks:finda.day</string>
+		<string>webcredentials:finda.day</string>
 	</array>
 </dict>
 </plist>

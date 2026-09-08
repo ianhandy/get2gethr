@@ -23,6 +23,16 @@ struct ConfirmRequest: Codable {
     let slotId: String?
 }
 
+struct ManualScheduleRequest: Codable {
+    let blocks: [ManualScheduleBlockRequest]
+}
+
+struct ManualScheduleBlockRequest: Codable, Equatable {
+    let date: String
+    let startTime: String
+    let endTime: String
+}
+
 struct OrganizerActionRequest: Codable {
     let action: String
     let participantId: String?
@@ -64,6 +74,8 @@ struct Viewer: Codable {
     let name: String?
     let status: ParticipantStatus?
     let connection: ConnectionSummary?
+    /// True when the person reviewed busy times extracted on their device.
+    let manualSchedule: Bool?
 }
 
 struct OtherCounts: Codable {

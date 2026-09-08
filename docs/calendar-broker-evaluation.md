@@ -1,17 +1,17 @@
-# Calendar broker evaluation — Cronofy vs Nylas
+# Calendar integration decision — direct OAuth first
 
-**Status:** recommendation ready, **decision and commercial terms need Ian.**
-**Date:** 2026-08-31
+**Status:** direct Google and Microsoft selected; broker remains optional.
+**Updated:** 2026-09-01
 
 ## The decision in one paragraph
 
-There is no universal calendar OAuth standard. Today get2gethr talks to Google
-directly, which means a Microsoft, Apple, or Exchange user **cannot join a
-meeting at all** — they get an invitation they can never act on. A broker
-collapses four integrations into one and takes provider refresh tokens off our
-infrastructure. **Cronofy is the recommendation**, with Nylas as the credible
-fallback. Both are paid; neither has been exercised against a live account,
-because that needs a developer account and a signature.
+There is no universal calendar OAuth standard. To keep recurring vendor costs
+low, get2gethr now owns the two integrations that cover the largest audience:
+direct Google Calendar and direct Microsoft Graph for Microsoft 365 and
+Outlook.com. Cronofy remains an optional adapter for Apple iCloud and Exchange
+coverage. Nylas is not needed for the current scope. Apple still requires a
+broker or a future manual-availability path; an ICS attachment alone cannot
+provide live free/busy data.
 
 ## What has already been built
 
@@ -20,24 +20,26 @@ The code no longer assumes Google. `lib/calendar/types.ts` defines a
 an event idempotently, revoke — and everything above it (the scheduler, the API
 routes, both clients) is written against that interface alone.
 
-Three adapters implement it:
+Four adapters implement it:
 
 | Adapter | File | State |
 |---|---|---|
 | Google (direct) | `lib/calendar/google.ts` | Works today with the existing credentials. Google accounts only. |
+| Microsoft (direct) | `lib/calendar/microsoft.ts` | Implemented against Microsoft identity and Graph v1.0. Needs an Entra app and live-account verification. |
 | Cronofy (broker) | `lib/calendar/cronofy.ts` | Written against the published API. **Never run against a live account.** |
 | Fake (tests) | `lib/calendar/fake.ts` | Drives the test suite, including outage and revocation paths. |
 
-Selection is `CALENDAR_BROKER`, or automatic: Cronofy when its credentials are
-present, otherwise direct Google. With neither configured the app now refuses to
-start a connection rather than sending someone to a provider page built from an
-empty `client_id`.
+Selection is provider-aware. A Google choice uses direct Google when configured;
+a Microsoft choice uses direct Microsoft; either can fall back to Cronofy when
+the direct credentials are absent. `CALENDAR_BROKER` can still force one adapter
+deployment-wide. OAuth state records the selected adapter so a callback always
+finishes through the route that started it.
 
-**Switching brokers is an env var and one new file in `lib/calendar/`.** That is
-the point of having done this first: the vendor choice is no longer load-bearing
-for the rest of the release.
+Provider access and refresh tokens are encrypted at rest. Rotated Microsoft and
+Cronofy refresh tokens are persisted before calendar API calls, so long-lived
+connections do not silently degrade after the first access token expires.
 
-## Why Cronofy first
+## When Cronofy is still useful
 
 - **One API covers Google, Microsoft/Office 365, Exchange, and iCloud**, including
   availability, event creation, and calendar-change webhooks.
@@ -69,7 +71,7 @@ no public REST/OAuth API and works over CalDAV with an **app-specific password**
 That is a user-visible wart under either vendor. The invite UI already discloses
 it, and the copy is in place.
 
-## Open questions — these need Ian
+## Open questions before adding a broker
 
 None of these can be settled from the code, and two of them are signatures.
 
@@ -88,33 +90,32 @@ None of these can be settled from the code, and two of them are signatures.
 
 ## Recommended next step
 
-A **two-provider technical spike**, which is the one thing I could not do:
-
-1. Ian obtains Cronofy and Nylas developer/sandbox accounts.
-2. Connect a Google, a Microsoft, and an iCloud test account through each.
-3. Run the existing suite against the real adapter — the `FakeCalendarBroker`
-   tests already encode the behaviour to check for: idempotent writes, revoked
-   grants, provider outages, availability changing mid-flight.
-4. Compare on the eight criteria above.
-5. Only then migrate production data.
-
-The Cronofy adapter is written and typechecked but **unproven**; treat the spike
-as validation of my implementation as much as of the vendor.
+1. Register the canonical callback in Google Cloud and Microsoft Entra.
+2. Connect one Google account, one Microsoft 365 account, and one Outlook.com
+   personal account.
+3. Verify account matching, multi-calendar busy aggregation, refresh-token
+   rotation, and exactly-one event creation after a retried confirmation.
+4. Decide whether Apple/Exchange demand justifies a Cronofy contract. If not,
+   leave those provider choices hidden rather than presenting a dead end.
 
 ## Configuration reference
 
 ```bash
-# Cronofy (preferred once contracted)
+# Optional broker for Apple/Exchange or a single-provider deployment
 CRONOFY_CLIENT_ID=...
 CRONOFY_CLIENT_SECRET=...
 CRONOFY_DATA_CENTER=us          # us | de | au | uk | ca | sg
 
-# Direct Google (works today, Google accounts only)
+# Direct Google
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 
-# Force a specific broker; otherwise Cronofy wins when configured
-CALENDAR_BROKER=cronofy         # cronofy | google
+# Direct Microsoft 365 and Outlook.com
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+
+# Optional: force one adapter deployment-wide
+CALENDAR_BROKER=microsoft       # microsoft | google | cronofy
 
 # Whether a connected account must match the invited address.
 # `strict` is the default and the safe posture.
@@ -123,6 +124,7 @@ CALENDAR_IDENTITY_POLICY=strict # strict | relaxed
 
 ## What does not change with a broker
 
-A broker does not remove the user's own consent step, and it does not make Apple
-easier. It removes *our* per-provider integration work and *our* custody of
-provider refresh tokens. Both are worth paying for; neither is magic.
+A broker does not remove the user's consent step, and Apple still uses an
+app-specific password behind the broker's UI. It removes our per-provider
+maintenance and our custody of provider refresh tokens, but that tradeoff only
+makes financial sense if Apple/Exchange support is important enough.

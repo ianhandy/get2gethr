@@ -18,13 +18,13 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "get2gethr — Find the perfect time to meet",
+  title: "find·a·day | Make a plan together",
   description:
-    "Automated group scheduling. Connect calendars, find common availability, confirm a time — no back-and-forth.",
+    "Connect calendars, find a time everyone can make, and get it on the calendar.",
   openGraph: {
-    title: "get2gethr",
+    title: "find·a·day",
     description:
-      "Automated group scheduling. Connect calendars, find common availability, confirm a time.",
+      "Find a time everyone can actually make.",
     type: "website",
   },
 };
@@ -39,36 +39,29 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${playfair.variable} ${dmSans.variable}`}>
-      <body className="min-h-screen antialiased" style={{ background: "var(--color-bg)" }}>
+      <body className="min-h-screen antialiased">
         {/* First stop for a keyboard user, so the form is one Tab away. */}
         <a href="#main" className="skip-link">
           Skip to main content
         </a>
 
-        <header
-          className="sticky top-0 z-40 px-6 py-4"
-          style={{
-            background: "var(--color-bg)",
-            borderBottom: "1px solid var(--color-border)",
-          }}
-        >
-          <div className="mx-auto flex max-w-2xl items-center justify-between">
+        <header className="site-header">
+          <div className="site-header-inner">
             <Link
               href="/"
-              className="font-display flex items-center text-xl font-bold transition-colors"
-              // 44px keeps the home link a comfortable target on a phone.
-              style={{ color: "var(--color-primary)", minHeight: "44px" }}
+              className="site-wordmark font-display"
             >
-              get2<span style={{ color: "var(--color-accent-a)" }}>gethr</span>
+              find·a·day
             </Link>
+            <p>Find a time everyone can actually make</p>
           </div>
         </header>
 
-        <main id="main" className="mx-auto max-w-2xl px-6 py-10">
+        <main id="main" className="site-main">
           {children}
         </main>
 
-        <footer className="mx-auto max-w-2xl px-6 pb-10 text-sm">
+        <footer className="site-footer">
           {/* Standalone navigation links, so each gets a full 44px target
               rather than relying on the inline-text exemption. */}
           <nav aria-label="Legal and support" className="flex flex-wrap gap-x-4">

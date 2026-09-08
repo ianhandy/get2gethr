@@ -4,6 +4,27 @@ struct ContentView: View {
     @EnvironmentObject private var router: Router
 
     var body: some View {
+        Group {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-schedule-import-preview") {
+                ScheduleImportView(
+                    event: .scheduleImportPreview,
+                    token: "preview",
+                    initiallyReviewing: ProcessInfo.processInfo.arguments.contains(
+                        "-schedule-import-review"
+                    ),
+                    onSaved: {}
+                )
+            } else {
+                appNavigation
+            }
+            #else
+            appNavigation
+            #endif
+        }
+    }
+
+    private var appNavigation: some View {
         NavigationStack(path: $router.path) {
             CreateEventView()
                 .navigationDestination(for: DeepLink.self) { destination in
@@ -37,3 +58,25 @@ struct ContentView: View {
         }
     }
 }
+
+#if DEBUG
+private extension EventSummary {
+    static let scheduleImportPreview = EventSummary(
+        id: "preview",
+        title: "Dinner planning",
+        description: nil,
+        organizerName: "Ian",
+        organizerEmail: nil,
+        startDate: "2026-09-02",
+        endDate: "2026-09-06",
+        durationMinutes: 60,
+        workingHoursStart: "09:00",
+        workingHoursEnd: "17:00",
+        timezone: "America/New_York",
+        excludeWeekends: false,
+        status: .gathering,
+        calendarWriteStatus: .notAttempted,
+        calendarWriteError: nil
+    )
+}
+#endif

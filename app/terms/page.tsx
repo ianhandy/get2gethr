@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Terms — get2gethr",
-  description: "The terms for using get2gethr.",
+  title: "Terms | find·a·day",
+  description: "The terms for using find·a·day.",
 };
 
-const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@get2gethr.app";
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@finda.day";
 
 export default function TermsPage() {
   return (
@@ -16,8 +16,8 @@ export default function TermsPage() {
 
       <Section title="The service">
         <p>
-          get2gethr reads free/busy information from calendars people connect, proposes a
-          meeting time that suits everyone, and writes the agreed meeting to the
+          find·a·day reads free/busy information from calendars people connect, proposes a
+          time that suits everyone, and writes the agreed event to the
           organizer&rsquo;s calendar. It is provided as-is, without warranty.
         </p>
       </Section>
@@ -34,7 +34,7 @@ export default function TermsPage() {
         <p>
           Scheduling depends on third-party calendar providers. If a provider is
           unavailable or an authorization is revoked, scheduling may pause. Always check a
-          confirmed meeting in your own calendar; get2gethr is not liable for missed
+          confirmed event in your own calendar; find·a·day is not liable for missed
           meetings or scheduling conflicts.
         </p>
       </Section>

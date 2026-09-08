@@ -86,6 +86,8 @@ export const events = sqliteTable(
     excludeWeekends: integer("exclude_weekends", { mode: "boolean" })
       .notNull()
       .default(true),
+    /** Monday-first, 7 × 24 hourly cells. Null keeps legacy events compatible. */
+    weeklyAvailabilityJson: text("weekly_availability_json"),
 
     status: text("status", { enum: EVENT_STATUSES }).notNull().default("gathering"),
     confirmedSlotId: text("confirmed_slot_id"),

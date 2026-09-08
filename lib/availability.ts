@@ -5,6 +5,13 @@ import {
   zonedWallClockToUtcMs,
   type LocalDate,
 } from "./time";
+import {
+  HOUR_SLOTS_PER_DAY,
+  isBlockedWeeklyState,
+  mondayFirstDayIndex,
+  weeklySlotIndex,
+  type WeeklySlotState,
+} from "./weekly-availability";
 
 /** A half-open interval of real time, `[startMs, endMs)`, in UTC milliseconds. */
 export type Interval = [number, number];
@@ -45,6 +52,8 @@ export interface CandidateSlotRequest {
   /** `HH:mm` in `timezone`; `24:00` is allowed. */
   workingHoursEnd: string;
   excludeWeekends: boolean;
+  /** Monday-first, 24 hourly cells per day. Overrides legacy day bounds. */
+  weeklyAvailability?: WeeklySlotState[] | null;
   /** One busy list per participant. Empty list means "free all window". */
   busyByParticipant: Interval[][];
   /** Slot starts land on multiples of this many minutes past the window start. */
@@ -77,6 +86,7 @@ export function computeCandidateSlots(request: CandidateSlotRequest): Interval[]
     granularityMinutes = DEFAULT_GRANULARITY_MINUTES,
     notBeforeMs,
     maxSlots = 5000,
+    weeklyAvailability,
   } = request;
 
   if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
@@ -86,10 +96,12 @@ export function computeCandidateSlots(request: CandidateSlotRequest): Interval[]
     throw new Error(`granularityMinutes must be a positive integer`);
   }
 
-  const { startMinutes, endMinutes } = parseWorkingHours(
+  const legacyWindow = parseWorkingHours(
     request.workingHoursStart,
     request.workingHoursEnd
   );
+  const startMinutes = weeklyAvailability ? 0 : legacyWindow.startMinutes;
+  const endMinutes = weeklyAvailability ? 24 * 60 : legacyWindow.endMinutes;
 
   // A meeting longer than the working day can never fit; say so by returning
   // nothing rather than by looping over every day to discover it.
@@ -97,11 +109,14 @@ export function computeCandidateSlots(request: CandidateSlotRequest): Interval[]
 
   const busy = mergeBusy(busyByParticipant.flat());
   const durationMs = durationMinutes * 60 * 1000;
-  const slots: Interval[] = [];
+  const slots: Array<{
+    interval: Interval;
+    preference: number;
+  }> = [];
 
   for (const date of enumerateLocalDates(startDate, endDate)) {
-    if (excludeWeekends) {
-      const weekday = localDateWeekday(date);
+    const weekday = localDateWeekday(date);
+    if (!weeklyAvailability && excludeWeekends) {
       if (weekday === 0 || weekday === 6) continue;
     }
 
@@ -120,16 +135,51 @@ export function computeCandidateSlots(request: CandidateSlotRequest): Interval[]
       if (notBeforeMs !== undefined && slotStartMs < notBeforeMs) continue;
       if (overlapsBusy(slotStartMs, slotEndMs, busy)) continue;
 
-      slots.push([slotStartMs, slotEndMs]);
-      if (slots.length >= maxSlots) return sortSlots(slots);
+      const preference = weeklyAvailability
+        ? weeklyPreference(
+            weeklyAvailability,
+            mondayFirstDayIndex(weekday),
+            offset,
+            durationMinutes
+          )
+        : 0;
+      if (preference === null) continue;
+
+      slots.push({
+        interval: [slotStartMs, slotEndMs],
+        preference,
+      });
     }
   }
 
-  return sortSlots(slots);
+  return slots
+    .sort(
+      (a, b) =>
+        b.preference - a.preference ||
+        a.interval[0] - b.interval[0] ||
+        a.interval[1] - b.interval[1]
+    )
+    .slice(0, maxSlots)
+    .map(({ interval }) => interval);
 }
 
-function sortSlots(slots: Interval[]): Interval[] {
-  return slots.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+function weeklyPreference(
+  availability: WeeklySlotState[],
+  dayIndex: number,
+  startMinutes: number,
+  durationMinutes: number
+): number | null {
+  const firstCell = Math.floor(startMinutes / 60);
+  const lastCell = Math.ceil((startMinutes + durationMinutes) / 60);
+  if (firstCell < 0 || lastCell > HOUR_SLOTS_PER_DAY) return null;
+
+  let preferredCells = 0;
+  for (let cell = firstCell; cell < lastCell; cell += 1) {
+    const state = availability[weeklySlotIndex(dayIndex, cell)];
+    if (!state || isBlockedWeeklyState(state)) return null;
+    if (state === "preferred") preferredCells += 1;
+  }
+  return preferredCells;
 }
 
 /** True when `[startMs, endMs)` intersects any interval in a sorted busy list. */

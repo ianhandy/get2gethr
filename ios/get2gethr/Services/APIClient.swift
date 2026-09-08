@@ -13,12 +13,12 @@ enum AppEnvironment {
         #if DEBUG
         return URL(string: "http://localhost:3100")!
         #else
-        return URL(string: "https://get2gethr.app")!
+        return URL(string: "https://finda.day")!
         #endif
     }
 
     /// Host used for universal links. Must match the Associated Domains entitlement.
-    static var universalLinkHost: String { baseURL.host ?? "get2gethr.app" }
+    static var universalLinkHost: String { baseURL.host ?? "finda.day" }
 }
 
 struct FieldError: Decodable {
@@ -110,6 +110,17 @@ actor APIClient {
 
     func declineInvite(token: String) async throws -> ActionResponse {
         try await send("POST", path: "/api/invite/\(token)/decline", body: EmptyBody())
+    }
+
+    func submitManualSchedule(
+        token: String,
+        blocks: [ManualScheduleBlockRequest]
+    ) async throws -> ActionResponse {
+        try await send(
+            "POST",
+            path: "/api/invite/\(token)/manual-schedule",
+            body: ManualScheduleRequest(blocks: blocks)
+        )
     }
 
     func respondToSlot(

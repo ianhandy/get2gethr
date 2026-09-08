@@ -3,10 +3,17 @@ import { decrypt, encrypt } from "../crypto";
 import { CronofyBroker } from "./cronofy";
 import { FakeCalendarBroker } from "./fake";
 import { GoogleCalendarBroker } from "./google";
-import type { BrokerId, CalendarBroker, CalendarGrant } from "./types";
+import { MicrosoftCalendarBroker } from "./microsoft";
+import type {
+  BrokerId,
+  CalendarBroker,
+  CalendarGrant,
+  CalendarProviderId,
+} from "./types";
 
 export * from "./types";
 export { GoogleCalendarBroker } from "./google";
+export { MicrosoftCalendarBroker } from "./microsoft";
 export { CronofyBroker } from "./cronofy";
 export { FakeCalendarBroker } from "./fake";
 
@@ -33,12 +40,21 @@ export function getBroker(id: BrokerId): CalendarBroker {
   const existing = registry.get(id);
   if (existing) return existing;
 
-  const broker: CalendarBroker =
-    id === "cronofy"
-      ? new CronofyBroker()
-      : id === "fake"
-        ? new FakeCalendarBroker()
-        : new GoogleCalendarBroker();
+  let broker: CalendarBroker;
+  switch (id) {
+    case "cronofy":
+      broker = new CronofyBroker();
+      break;
+    case "fake":
+      broker = new FakeCalendarBroker();
+      break;
+    case "microsoft":
+      broker = new MicrosoftCalendarBroker();
+      break;
+    case "google":
+      broker = new GoogleCalendarBroker();
+      break;
+  }
   registry.set(id, broker);
   return broker;
 }
@@ -46,10 +62,10 @@ export function getBroker(id: BrokerId): CalendarBroker {
 /**
  * The broker new connections should use.
  *
- * Cronofy wins when it is configured, because it is the only option that lets a
- * Microsoft or Apple user join at all. Direct Google remains the fallback so a
- * deployment without a broker contract still works for Google accounts rather
- * than failing shut.
+ * An explicit deployment-wide broker still wins. Without one, a user's chosen
+ * provider selects its direct adapter first and only falls back to Cronofy when
+ * a direct adapter is unavailable. This keeps routine OAuth upkeep in-house
+ * while preserving an optional route for Apple and Exchange.
  */
 export class CalendarNotConfiguredError extends Error {
   constructor(message: string) {
@@ -58,7 +74,9 @@ export class CalendarNotConfiguredError extends Error {
   }
 }
 
-export function getActiveBroker(): CalendarBroker {
+export function getActiveBroker(
+  preferredProvider?: CalendarProviderId
+): CalendarBroker {
   const preferred = process.env.CALENDAR_BROKER as BrokerId | undefined;
   if (preferred) {
     const broker = getBroker(preferred);
@@ -67,26 +85,67 @@ export function getActiveBroker(): CalendarBroker {
         `CALENDAR_BROKER is set to "${preferred}" but its credentials are missing`
       );
     }
+    if (
+      preferredProvider &&
+      preferredProvider !== "other" &&
+      !broker.supportedProviders.includes(preferredProvider)
+    ) {
+      throw new CalendarNotConfiguredError(
+        `${broker.displayName} does not support ${preferredProvider} calendars`
+      );
+    }
     return broker;
   }
 
+  if (preferredProvider === "google") {
+    const google = getBroker("google");
+    if (google.isConfigured()) return google;
+  }
+
+  if (preferredProvider === "microsoft") {
+    const microsoft = getBroker("microsoft");
+    if (microsoft.isConfigured()) return microsoft;
+  }
+
   const cronofy = getBroker("cronofy");
-  if (cronofy.isConfigured()) return cronofy;
+  if (
+    cronofy.isConfigured() &&
+    (!preferredProvider ||
+      preferredProvider === "other" ||
+      cronofy.supportedProviders.includes(preferredProvider))
+  ) {
+    return cronofy;
+  }
 
   const google = getBroker("google");
-  if (google.isConfigured()) return google;
+  if (!preferredProvider && google.isConfigured()) return google;
+
+  const microsoft = getBroker("microsoft");
+  if (!preferredProvider && microsoft.isConfigured()) return microsoft;
 
   // Sending someone to an authorization URL built from missing credentials
   // produces a provider error page with an empty client_id. Refusing here
   // turns a confusing dead end into an operator-visible misconfiguration.
   throw new CalendarNotConfiguredError(
-    "No calendar provider is configured. Set CRONOFY_CLIENT_ID/SECRET, or GOOGLE_CLIENT_ID/SECRET."
+    preferredProvider
+      ? `No configured calendar route supports ${preferredProvider}`
+      : "No calendar provider is configured. Set Google, Microsoft, or Cronofy credentials."
   );
 }
 
 /** Every provider a person could connect on this deployment, for the UI. */
-export function supportedProviders(): string[] {
-  return [...getActiveBroker().supportedProviders];
+export function supportedProviders(): CalendarProviderId[] {
+  const explicit = process.env.CALENDAR_BROKER as BrokerId | undefined;
+  if (explicit) return [...getActiveBroker().supportedProviders];
+
+  const providers = new Set<CalendarProviderId>();
+  for (const id of ["google", "microsoft", "cronofy"] as const) {
+    const broker = getBroker(id);
+    if (!broker.isConfigured()) continue;
+    for (const provider of broker.supportedProviders) providers.add(provider);
+  }
+  if (providers.size === 0) getActiveBroker();
+  return [...providers];
 }
 
 /** Reads a stored connection row into the grant shape brokers accept. */

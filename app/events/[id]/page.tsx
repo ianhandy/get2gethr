@@ -194,10 +194,10 @@ export default function EventDashboardPage() {
     return (
       <div
         role="alert"
-        className="rounded-2xl border p-8"
+        className="ios-card rounded-2xl border p-8"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        <p className="text-sm" style={{ color: "#8A2E14" }}>
+        <p className="text-sm" style={{ color: "var(--color-danger)" }}>
           {message}
         </p>
       </div>
@@ -241,7 +241,7 @@ export default function EventDashboardPage() {
       </motion.div>
 
       <section
-        className="rounded-2xl border p-6"
+        className="ios-card rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
         aria-label="Status"
       >
@@ -258,7 +258,11 @@ export default function EventDashboardPage() {
         {event.calendarWriteStatus === "failed" && event.calendarWriteError && (
           <div
             className="mt-4 rounded-xl px-4 py-3 text-sm"
-            style={{ background: "#FFF5F3", color: "#8A2E14", border: "1px solid #FDDDD6" }}
+            style={{
+              background: "var(--color-danger-surface)",
+              color: "var(--color-danger)",
+              border: "1px solid color-mix(in srgb, var(--color-danger) 28%, transparent)",
+            }}
           >
             <p className="font-medium">The meeting isn&rsquo;t on a calendar yet.</p>
             <p className="mt-1">{event.calendarWriteError}</p>
@@ -292,7 +296,7 @@ export default function EventDashboardPage() {
 
       {needsOrganizerCalendar && connectToken && (
         <section
-          className="rounded-2xl border p-6"
+          className="ios-card rounded-2xl border p-6"
           style={{
             background: "var(--color-surface)",
             borderColor: "var(--color-accent-a)",
@@ -314,8 +318,12 @@ export default function EventDashboardPage() {
             )}&returnTo=${encodeURIComponent(
               `/events/${id}?organizerToken=${organizerToken}`
             )}`}
-            className="inline-flex items-center justify-center rounded-2xl px-6 text-base font-semibold text-white focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
-            style={{ background: "var(--color-accent-a)", minHeight: "48px" }}
+            className="inline-flex w-full items-center justify-center rounded-xl px-6 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+            style={{
+              background: "var(--color-accent-a)",
+              color: "var(--color-on-accent)",
+              minHeight: "52px",
+            }}
           >
             Connect calendar
           </a>
@@ -323,7 +331,7 @@ export default function EventDashboardPage() {
       )}
 
       <section
-        className="rounded-2xl border p-6"
+        className="ios-card rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
         aria-label="Participants"
       >
@@ -389,7 +397,7 @@ export default function EventDashboardPage() {
       </section>
 
       <section
-        className="rounded-2xl border p-6"
+        className="ios-card rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
         aria-label="Organizer controls"
       >
@@ -469,7 +477,7 @@ function StatusPill({ status }: { status: ParticipantRow["status"] }) {
     },
     declined: {
       background: "color-mix(in srgb, var(--color-accent-a) 18%, transparent)",
-      color: "#8A2E14",
+      color: "var(--color-danger)",
       label: "Declined",
     },
     removed: {
@@ -510,7 +518,7 @@ function Action({
       className="rounded-xl border px-4 text-sm font-medium disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
       style={{
         minHeight: "44px",
-        color: destructive ? "#8A2E14" : "var(--color-primary)",
+        color: destructive ? "var(--color-danger)" : "var(--color-primary)",
         borderColor: destructive ? "var(--color-accent-a)" : "var(--color-border)",
         background: "transparent",
       }}

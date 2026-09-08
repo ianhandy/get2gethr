@@ -245,6 +245,17 @@ describe("audience-scoped views", () => {
     expect(organizerEventView(input).viewer.id).toBe(seeded.organizer.id);
   });
 
+  it("shows only whether the viewer supplied a reviewed manual schedule", async () => {
+    const { seeded, input } = await viewInput();
+    expect(attendeeEventView(input, seeded.attendees[0]).viewer.manualSchedule).toBe(
+      false
+    );
+
+    const participant = { ...seeded.attendees[0], availabilityJson: "[]" };
+    expect(attendeeEventView(input, participant).viewer.manualSchedule).toBe(true);
+    expect(organizerEventView(input, null).viewer.manualSchedule).toBe(false);
+  });
+
   it("dispatches on the audience", async () => {
     const { seeded, input } = await viewInput();
     const organizer = await authorizeOrganizer(seeded.event.id, seeded.organizerToken);

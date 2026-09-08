@@ -143,10 +143,10 @@ export default function InvitePage() {
     return (
       <div
         role="alert"
-        className="rounded-2xl border p-8 text-center"
+        className="ios-card rounded-2xl border p-8 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        <p className="text-sm" style={{ color: "#8A2E14" }}>
+        <p className="text-sm" style={{ color: "var(--color-danger)" }}>
           {error}
         </p>
       </div>
@@ -168,7 +168,7 @@ export default function InvitePage() {
     return (
       <motion.div
         {...fade}
-        className="rounded-2xl border p-10 text-center"
+        className="ios-card rounded-2xl border p-10 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <h1
@@ -189,7 +189,7 @@ export default function InvitePage() {
     return (
       <motion.div
         {...fade}
-        className="rounded-2xl border p-10 text-center"
+        className="ios-card rounded-2xl border p-10 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <h1
@@ -254,7 +254,7 @@ export default function InvitePage() {
       </motion.div>
 
       <section
-        className="rounded-2xl border p-6"
+        className="ios-card rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
         aria-label="Meeting details"
       >
@@ -273,7 +273,11 @@ export default function InvitePage() {
         <div
           role="alert"
           className="rounded-xl px-4 py-3 text-sm"
-          style={{ background: "#FFF5F3", color: "#8A2E14", border: "1px solid #FDDDD6" }}
+          style={{
+            background: "var(--color-danger-surface)",
+            color: "var(--color-danger)",
+            border: "1px solid color-mix(in srgb, var(--color-danger) 28%, transparent)",
+          }}
         >
           {CONNECT_ERRORS[connectError] ?? CONNECT_ERRORS.provider_error}
         </div>
@@ -290,7 +294,7 @@ export default function InvitePage() {
       )}
 
       <section
-        className="rounded-2xl border p-6"
+        className="ios-card rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <h2
@@ -317,8 +321,12 @@ export default function InvitePage() {
 
         <a
           href={`/api/calendar/connect?token=${encodeURIComponent(token)}`}
-          className="inline-flex items-center justify-center rounded-2xl px-6 text-base font-semibold text-white shadow-md transition-shadow hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
-          style={{ background: "var(--color-accent-a)", minHeight: "48px" }}
+          className="inline-flex w-full items-center justify-center rounded-xl px-6 text-base font-semibold shadow-md transition-shadow hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+          style={{
+            background: "var(--color-accent-a)",
+            color: "var(--color-on-accent)",
+            minHeight: "52px",
+          }}
         >
           Connect calendar
         </a>

@@ -216,6 +216,7 @@ export function organizerEventView(
       status: self?.status,
       joinedAt: self?.joinedAt,
       connection: self ? connectionView(connections.get(self.id)) : null,
+      manualSchedule: self ? self.availabilityJson !== null : false,
     },
     participants: input.participants.map((participant) => ({
       id: participant.id,
@@ -227,6 +228,7 @@ export function organizerEventView(
       invitedAt: participant.invitedAt,
       lastRemindedAt: participant.lastRemindedAt,
       connection: connectionView(connections.get(participant.id)),
+      manualSchedule: participant.availabilityJson !== null,
     })),
     currentSlot: slotView(input.currentSlot),
     confirmedSlot: slotView(input.confirmedSlot),
@@ -254,6 +256,7 @@ export function attendeeEventView(input: EventViewInput, viewer: Participant) {
       status: viewer.status,
       joinedAt: viewer.joinedAt,
       connection: connectionView(connections.get(viewer.id)),
+      manualSchedule: viewer.availabilityJson !== null,
     },
     // Progress, expressed as counts rather than a leaked address book.
     others: {

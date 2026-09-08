@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Support — get2gethr",
-  description: "Help with get2gethr, and how to get your data deleted.",
+  title: "Support | find·a·day",
+  description: "Help with find·a·day, and how to get your data deleted.",
 };
 
-const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@get2gethr.app";
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@finda.day";
 
 /** App Store review requires a working support URL and contact route. */
 export default function SupportPage() {
@@ -37,7 +37,7 @@ export default function SupportPage() {
         or ask the organizer to invite the address you actually use.
       </Faq>
 
-      <Faq question="What does get2gethr see in my calendar?">
+      <Faq question="What does find·a·day see in my calendar?">
         Only the start and end times of blocks when you&rsquo;re busy. Not titles, guests,
         locations, or notes. See the{" "}
         <Link href="/privacy" className="underline" style={{ color: "var(--color-accent-a)" }}>
@@ -47,7 +47,7 @@ export default function SupportPage() {
       </Faq>
 
       <Faq question="How do I disconnect my calendar?">
-        Revoke get2gethr&rsquo;s access from your calendar provider&rsquo;s account
+        Revoke find·a·day&rsquo;s access from your calendar provider&rsquo;s account
         settings at any time. Scheduling for events you joined will pause and the organizer
         will be told a reconnection is needed.
       </Faq>

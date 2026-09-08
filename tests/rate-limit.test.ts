@@ -8,6 +8,10 @@ import {
 } from "@/lib/rate-limit";
 import { CreateEventSchema, MAX_PARTICIPANTS, MAX_RANGE_DAYS } from "@/lib/validation";
 import { resetDatabase, setupSchema } from "./helpers/db";
+import {
+  blankWeeklyAvailability,
+  type WeeklySlotState,
+} from "@/lib/weekly-availability";
 
 const RULE: RateLimitRule = { name: "test:rule", limit: 3, windowSeconds: 3600 };
 
@@ -172,6 +176,16 @@ describe("CreateEventSchema caps", () => {
     ).toBe(false);
   });
 
+  it("returns validation errors for malformed dates without throwing", () => {
+    expect(() =>
+      CreateEventSchema.safeParse({ ...valid, startDate: "", endDate: "not-a-date" })
+    ).not.toThrow();
+    expect(
+      CreateEventSchema.safeParse({ ...valid, startDate: "", endDate: "not-a-date" })
+        .success
+    ).toBe(false);
+  });
+
   it("rejects an unknown timezone", () => {
     expect(
       CreateEventSchema.safeParse({ ...valid, timezone: "America/Atlantis" }).success
@@ -194,6 +208,20 @@ describe("CreateEventSchema caps", () => {
   it("rejects a meeting longer than the working day", () => {
     const result = CreateEventSchema.safeParse({ ...valid, durationMinutes: 480 + 15 });
     expect(result.success).toBe(false);
+  });
+
+  it("requires an open stretch long enough in a weekly planner", () => {
+    const closedWeek: WeeklySlotState[] = blankWeeklyAvailability().map(
+      () => "unavailable"
+    );
+    expect(
+      CreateEventSchema.safeParse({ ...valid, weeklyAvailability: closedWeek }).success
+    ).toBe(false);
+
+    closedWeek[10] = "preferred";
+    expect(
+      CreateEventSchema.safeParse({ ...valid, weeklyAvailability: closedWeek }).success
+    ).toBe(true);
   });
 
   it("rejects a duplicated invitee", () => {

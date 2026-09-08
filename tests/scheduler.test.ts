@@ -121,6 +121,20 @@ async function decline(participant: Participant): Promise<void> {
     .where(eq(participants.id, participant.id));
 }
 
+async function useManualSchedule(
+  participant: Participant,
+  busy: Interval[]
+): Promise<void> {
+  await db
+    .update(participants)
+    .set({
+      status: "joined",
+      joinedAt: Math.floor(Date.now() / 1000),
+      availabilityJson: JSON.stringify(busy),
+    })
+    .where(eq(participants.id, participant.id));
+}
+
 async function eventStatus(eventId: string) {
   const row = await db.query.events.findFirst({ where: eq(events.id, eventId) });
   return row!;
@@ -237,6 +251,39 @@ describe("advanceEvent — gathering", () => {
     const slot = await currentSlot(seeded.event.id);
     expect(slot).toBeDefined();
     expect(slot!.startTime * 1000).toBeGreaterThanOrEqual(at("2026-08-31", "15:00"));
+  });
+
+  it("uses reviewed photo availability without a calendar connection", async () => {
+    const seeded = await seedEvent({
+      status: "gathering",
+      startDate: "2026-08-31",
+      endDate: "2026-08-31",
+    });
+    await connect(seeded.organizer);
+    await useManualSchedule(seeded.attendees[0], [
+      [at("2026-08-31", "09:00"), at("2026-08-31", "14:00")],
+    ]);
+    await useManualSchedule(seeded.attendees[1], []);
+
+    await advanceEvent(seeded.event.id);
+
+    const slot = await currentSlot(seeded.event.id);
+    expect(slot).toBeDefined();
+    expect(slot!.startTime * 1000).toBeGreaterThanOrEqual(at("2026-08-31", "14:00"));
+  });
+
+  it("does not treat malformed stored manual availability as free", async () => {
+    const seeded = await seedEvent({ status: "gathering" });
+    await connect(seeded.organizer);
+    await useManualSchedule(seeded.attendees[0], []);
+    await db
+      .update(participants)
+      .set({ status: "joined", availabilityJson: "not-json" })
+      .where(eq(participants.id, seeded.attendees[1].id));
+
+    await advanceEvent(seeded.event.id);
+
+    expect((await eventStatus(seeded.event.id)).status).toBe("action_required");
   });
 
   it("is idempotent when called repeatedly", async () => {

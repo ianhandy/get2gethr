@@ -1,4 +1,5 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+import { awsCredentialsProvider } from "@vercel/oidc-aws-credentials-provider";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "./db";
@@ -8,8 +9,15 @@ import { buildIcsEvent, icsAttachment } from "./ics";
 let cachedClient: SESv2Client | null = null;
 function ses(): SESv2Client {
   if (!cachedClient) {
+    const roleArn = process.env.AWS_ROLE_ARN;
     cachedClient = new SESv2Client({
-      region: process.env.AWS_SES_REGION ?? "us-east-1",
+      region: process.env.AWS_SES_REGION ?? "us-east-2",
+      // Vercel exchanges its short-lived OIDC token for temporary AWS
+      // credentials. Without a role ARN, the AWS SDK keeps its normal local
+      // credential chain for development and tests.
+      ...(roleArn
+        ? { credentials: awsCredentialsProvider({ roleArn }) }
+        : {}),
     });
   }
   return cachedClient;
@@ -109,12 +117,12 @@ function layout(headline: string, body: string): string {
   return `<!doctype html>
 <html lang="en"><body style="margin:0;padding:24px;background:${PALETTE.bg};font-family:'DM Sans',Helvetica,Arial,sans-serif;color:${PALETTE.primary};">
   <div style="max-width:520px;margin:0 auto;">
-    <p style="font-size:20px;font-weight:700;margin:0 0 20px;color:${PALETTE.primary};">get2<span style="color:${PALETTE.accent};">gethr</span></p>
+    <p style="font-size:20px;font-weight:700;margin:0 0 20px;color:${PALETTE.primary};">find<span style="color:${PALETTE.accent};">·a·</span>day</p>
     <div style="background:${PALETTE.surface};border:1px solid ${PALETTE.border};border-radius:16px;padding:28px;">
       <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:${PALETTE.primary};">${headline}</h1>
       ${body}
     </div>
-    <p style="margin:20px 0 0;font-size:12px;color:${PALETTE.muted};">You received this because someone invited you to schedule a meeting.</p>
+    <p style="margin:20px 0 0;font-size:12px;color:${PALETTE.muted};">You received this because someone invited you to make a plan.</p>
   </div>
 </body></html>`;
 }

@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "db:backup": "node scripts/backup-turso.mjs",
     "db:migrate": "tsx scripts/migrate.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run audit:prod"
   },
@@ -32,6 +33,7 @@
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1123.0",
     "@libsql/client": "^0.17.2",
+    "@vercel/oidc-aws-credentials-provider": "^3.3.5",
     "canvas-confetti": "^1.9.4",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",

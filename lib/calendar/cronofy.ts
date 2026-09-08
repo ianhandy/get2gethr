@@ -180,7 +180,7 @@ export class CronofyBroker implements CalendarBroker {
   }
 
   /** Exchanges a refresh token when the access token is at or near expiry. */
-  private async refreshed(grant: CalendarGrant): Promise<CalendarGrant> {
+  async refreshGrant(grant: CalendarGrant): Promise<CalendarGrant> {
     const expiresAt = grant.tokenExpiresAt;
     if (!grant.refreshToken || (expiresAt && expiresAt - Date.now() > 60_000)) {
       return grant;
@@ -206,7 +206,7 @@ export class CronofyBroker implements CalendarBroker {
   }
 
   private async accessToken(grant: CalendarGrant): Promise<string> {
-    const fresh = await this.refreshed(grant);
+    const fresh = await this.refreshGrant(grant);
     if (!fresh.accessToken) {
       throw new CalendarAuthorizationError("Cronofy connection has no access token");
     }

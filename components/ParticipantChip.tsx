@@ -21,7 +21,6 @@ export default function ParticipantChips({
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
   const statusId = useId();
-  const hintId = useId();
   const reduceMotion = useReducedMotion();
 
   function addEmail(raw: string) {
@@ -66,10 +65,6 @@ export default function ParticipantChips({
 
   return (
     <div className="flex flex-col gap-2">
-      <p id={hintId} className="text-sm" style={{ color: "var(--color-muted)" }}>
-        Type an email and press Enter to add it. Backspace removes the last one.
-      </p>
-
       {emails.length > 0 && (
         <ul className="flex flex-wrap gap-2 p-0" aria-label="People invited">
           <AnimatePresence mode="popLayout" initial={false}>
@@ -105,30 +100,47 @@ export default function ParticipantChips({
         </ul>
       )}
 
-      <div
-        className="flex min-h-[52px] flex-wrap items-center gap-2 rounded-xl border px-3 py-2 transition-all"
-        style={{
-          background: "var(--color-surface)",
-          borderColor: error ? "var(--color-accent-a)" : "var(--color-border)",
-        }}
-      >
-        <input
-          id={inputId}
-          type="email"
-          value={inputValue}
-          onChange={(event) => {
-            setInputValue(event.target.value);
-            if (error) setError(null);
+      <div className="flex items-stretch gap-2">
+        <div
+          className="flex min-h-[52px] min-w-0 flex-1 items-center rounded-xl border px-3 py-1 transition-all"
+          style={{
+            background: "var(--color-sunken)",
+            borderColor: error ? "var(--color-accent-a)" : "var(--color-border)",
           }}
-          onKeyDown={handleKeyDown}
-          onBlur={() => addEmail(inputValue)}
-          placeholder="alex@example.com"
-          aria-labelledby={labelledBy}
-          aria-describedby={`${hintId} ${statusId}`}
-          aria-invalid={error ? true : undefined}
-          className="min-w-[160px] flex-1 bg-transparent text-base outline-none"
-          style={{ color: "var(--color-primary)", minHeight: "44px" }}
-        />
+        >
+          <input
+            id={inputId}
+            type="email"
+            value={inputValue}
+            onChange={(event) => {
+              setInputValue(event.target.value.toLowerCase());
+              if (error) setError(null);
+            }}
+            onKeyDown={handleKeyDown}
+            onBlur={() => addEmail(inputValue)}
+            placeholder="alex@example.com"
+            aria-labelledby={labelledBy}
+            aria-describedby={statusId}
+            aria-invalid={error ? true : undefined}
+            className="min-w-0 flex-1 bg-transparent text-base outline-none"
+            style={{ color: "var(--color-primary)", minHeight: "44px" }}
+          />
+        </div>
+        {inputValue.trim() ? (
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => addEmail(inputValue)}
+            className="rounded-full px-4 text-sm font-semibold"
+            style={{
+              minHeight: "52px",
+              background: "var(--color-accent-a)",
+              color: "var(--color-on-accent)",
+            }}
+          >
+            Add
+          </button>
+        ) : null}
       </div>
 
       {/* One live region carries both the running count and any error, so a

@@ -92,6 +92,9 @@ export async function POST(req: NextRequest) {
       workingHoursEnd: data.workingHoursEnd,
       timezone: data.timezone,
       excludeWeekends: data.excludeWeekends,
+      weeklyAvailabilityJson: data.weeklyAvailability
+        ? JSON.stringify(data.weeklyAvailability)
+        : null,
       // The event does not start gathering until the organizer has connected a
       // calendar — otherwise their own availability is missing from the whole
       // calculation.

@@ -26,8 +26,8 @@ can remind, proceed without them, or cancel.
 | Web | Next.js 16, React 19, TypeScript, Tailwind CSS v4 |
 | iOS | SwiftUI, iOS 17+ |
 | Database | Turso (libSQL) via Drizzle ORM |
-| Email | Resend |
-| Calendar | Provider-neutral broker interface — Cronofy or direct Google |
+| Email | Amazon SES |
+| Calendar | Direct Google and Microsoft adapters; optional Cronofy broker |
 | Tests | Vitest |
 
 ## Setup
@@ -44,15 +44,18 @@ ENCRYPTION_KEY=any-long-random-string
 EMAIL_FROM="get2gethr <dev@localhost>"
 NEXT_PUBLIC_BASE_URL=http://localhost:3100
 
-# Production email delivery uses Amazon SES. The SDK also supports temporary
-# credentials or an attached runtime role through its default credential chain.
-AWS_SES_REGION=us-east-1
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
+# Production email delivery uses Amazon SES with short-lived Vercel OIDC
+# credentials. Local development may use the standard AWS credential chain.
+AWS_SES_REGION=us-east-2
+AWS_ROLE_ARN=arn:aws:iam::123456789012:role/get2gethr-vercel-ses
 
 # At least one calendar provider, or calendar connection is disabled:
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
+
+# Direct Microsoft 365 and Outlook.com support:
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
 ```
 
 ### Web

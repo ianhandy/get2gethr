@@ -53,12 +53,32 @@ describe("broker selection", () => {
     expect(getActiveBroker().id).toBe("google");
   });
 
+  it("routes a Microsoft choice to the direct Microsoft adapter", () => {
+    delete process.env.CALENDAR_BROKER;
+    process.env.MICROSOFT_CLIENT_ID = "id";
+    process.env.MICROSOFT_CLIENT_SECRET = "secret";
+    expect(getActiveBroker("microsoft").id).toBe("microsoft");
+  });
+
+  it("reports both direct providers when both are configured", () => {
+    delete process.env.CALENDAR_BROKER;
+    delete process.env.CRONOFY_CLIENT_ID;
+    delete process.env.CRONOFY_CLIENT_SECRET;
+    process.env.GOOGLE_CLIENT_ID = "google-id";
+    process.env.GOOGLE_CLIENT_SECRET = "google-secret";
+    process.env.MICROSOFT_CLIENT_ID = "microsoft-id";
+    process.env.MICROSOFT_CLIENT_SECRET = "microsoft-secret";
+    expect(supportedProviders()).toEqual(["google", "microsoft"]);
+  });
+
   it("refuses rather than building an authorization URL with no credentials", () => {
     delete process.env.CALENDAR_BROKER;
     delete process.env.CRONOFY_CLIENT_ID;
     delete process.env.CRONOFY_CLIENT_SECRET;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.MICROSOFT_CLIENT_ID;
+    delete process.env.MICROSOFT_CLIENT_SECRET;
     expect(() => getActiveBroker()).toThrow(CalendarNotConfiguredError);
   });
 

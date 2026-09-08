@@ -236,10 +236,10 @@ export default function ConfirmPage() {
     return (
       <div
         role="alert"
-        className="rounded-2xl border p-8 text-center"
+        className="ios-card rounded-2xl border p-8 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        <p className="text-sm" style={{ color: "#8A2E14" }}>
+        <p className="text-sm" style={{ color: "var(--color-danger)" }}>
           {error}
         </p>
       </div>
@@ -263,7 +263,7 @@ export default function ConfirmPage() {
     return (
       <motion.div
         {...fade}
-        className="rounded-2xl border p-10 text-center"
+        className="ios-card rounded-2xl border p-10 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <h1
@@ -285,7 +285,7 @@ export default function ConfirmPage() {
     return (
       <motion.div
         {...fade}
-        className="rounded-2xl border p-10 text-center"
+        className="ios-card rounded-2xl border p-10 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <h1
@@ -304,7 +304,7 @@ export default function ConfirmPage() {
   if (viewer.status !== "joined") {
     return (
       <div
-        className="rounded-2xl border p-8"
+        className="ios-card rounded-2xl border p-8"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <p className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -325,7 +325,7 @@ export default function ConfirmPage() {
   if (!data.currentSlot) {
     return (
       <div
-        className="rounded-2xl border p-8 text-center"
+        className="ios-card rounded-2xl border p-8 text-center"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <h1
@@ -366,7 +366,7 @@ export default function ConfirmPage() {
 
       <motion.section
         {...fade}
-        className="rounded-2xl border p-6 text-center sm:p-8"
+        className="ios-card rounded-2xl border p-6 text-center sm:p-8"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
         aria-label="Proposed time"
       >
@@ -391,7 +391,11 @@ export default function ConfirmPage() {
         <div
           role="alert"
           className="rounded-xl px-4 py-3 text-sm"
-          style={{ background: "#FFF5F3", color: "#8A2E14", border: "1px solid #FDDDD6" }}
+          style={{
+            background: "var(--color-danger-surface)",
+            color: "var(--color-danger)",
+            border: "1px solid color-mix(in srgb, var(--color-danger) 28%, transparent)",
+          }}
         >
           {error}
         </div>
@@ -399,7 +403,7 @@ export default function ConfirmPage() {
 
       <motion.section
         {...fade}
-        className="rounded-2xl border p-6"
+        className="ios-card rounded-2xl border p-6"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <h2
@@ -413,8 +417,12 @@ export default function ConfirmPage() {
             type="button"
             onClick={() => respond("confirmed")}
             disabled={submitting}
-            className="flex-1 rounded-2xl px-4 text-base font-semibold text-white disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
-            style={{ background: "var(--color-accent-c)", minHeight: "48px" }}
+            className="flex-1 rounded-xl px-4 text-base font-semibold disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+            style={{
+              background: "var(--color-accent-c)",
+              color: "var(--color-on-accent)",
+              minHeight: "52px",
+            }}
           >
             Works for me
           </button>
@@ -422,9 +430,9 @@ export default function ConfirmPage() {
             type="button"
             onClick={() => respond("declined")}
             disabled={submitting}
-            className="flex-1 rounded-2xl border px-4 text-base font-semibold disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
+            className="flex-1 rounded-xl border px-4 text-base font-semibold disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-offset-2 [--tw-ring-color:var(--color-accent-c)]"
             style={{
-              color: "#8A2E14",
+              color: "var(--color-danger)",
               borderColor: "var(--color-accent-a)",
               background: "transparent",
               minHeight: "48px",

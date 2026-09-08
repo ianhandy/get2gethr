@@ -8,6 +8,11 @@ import {
   type Interval,
 } from "@/lib/availability";
 import { zonedWallClockToUtcMs } from "@/lib/time";
+import {
+  blankWeeklyAvailability,
+  weeklySlotIndex,
+  type WeeklySlotState,
+} from "@/lib/weekly-availability";
 
 const NY = "America/New_York";
 
@@ -445,6 +450,65 @@ describe("computeCandidateSlots — determinism and ordering", () => {
     ).toEqual(
       computeCandidateSlots(baseRequest({ busyByParticipant: [sam, alex] }))
     );
+  });
+});
+
+describe("computeCandidateSlots — weekly planner", () => {
+  function closedWeek(): WeeklySlotState[] {
+    return blankWeeklyAvailability().map(() => "unavailable");
+  }
+
+  it("removes unavailable hours", () => {
+    const week = closedWeek();
+    week[weeklySlotIndex(0, 10)] = "available";
+
+    const slots = computeCandidateSlots(
+      baseRequest({
+        startDate: "2026-08-31",
+        endDate: "2026-08-31",
+        durationMinutes: 60,
+        weeklyAvailability: week,
+      })
+    );
+
+    expect(slots.map(([start]) => wall(start).slice(11))).toEqual(["10:00"]);
+  });
+
+  it("ranks preferred times before earlier merely available times", () => {
+    const week = closedWeek();
+    week[weeklySlotIndex(0, 10)] = "available";
+    week[weeklySlotIndex(1, 10)] = "preferred";
+
+    const slots = computeCandidateSlots(
+      baseRequest({
+        startDate: "2026-08-31",
+        endDate: "2026-09-01",
+        durationMinutes: 60,
+        weeklyAvailability: week,
+      })
+    );
+
+    expect(slots.map(([start]) => wall(start))).toEqual([
+      "2026-09-01 10:00",
+      "2026-08-31 10:00",
+    ]);
+  });
+
+  it("uses the planner for weekends instead of the legacy weekend switch", () => {
+    const week = closedWeek();
+    week[weeklySlotIndex(6, 12)] = "preferred";
+
+    const slots = computeCandidateSlots(
+      baseRequest({
+        startDate: "2026-09-06",
+        endDate: "2026-09-06",
+        durationMinutes: 60,
+        excludeWeekends: true,
+        weeklyAvailability: week,
+      })
+    );
+
+    expect(slots.map(([start]) => wall(start))).toEqual(["2026-09-06 12:00"]);
   });
 });
 

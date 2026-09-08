@@ -11,6 +11,7 @@ struct InviteView: View {
     @State private var errorMessage: String?
     @State private var isWorking = false
     @State private var connectError: String?
+    @State private var showScheduleImport = false
 
     var body: some View {
         ScrollView {
@@ -38,13 +39,22 @@ struct InviteView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load() }
+        .fullScreenCover(isPresented: $showScheduleImport) {
+            if let event = view?.event {
+                ScheduleImportView(event: event, token: token) {
+                    Task { await load() }
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private func content(for view: EventView) -> some View {
         let event = view.event
-        let connected = view.viewer.status == .joined
-            && view.viewer.connection?.status == .connected
+        let connected = view.viewer.status == .joined && (
+            view.viewer.connection?.status == .connected
+                || view.viewer.manualSchedule == true
+        )
 
         VStack(alignment: .leading, spacing: 6) {
             Text("Invitation from \(event.organizerName)")
@@ -153,6 +163,35 @@ struct InviteView: View {
             }
             .disabled(isWorking)
 
+            if view.viewer.role == "attendee" {
+                HStack(spacing: 12) {
+                    Rectangle().fill(Theme.border).frame(height: 1)
+                    Text("or")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                    Rectangle().fill(Theme.border).frame(height: 1)
+                }
+                .accessibilityHidden(true)
+
+                Button {
+                    showScheduleImport = true
+                } label: {
+                    Label("Scan a schedule", systemImage: "camera.viewfinder")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: Theme.minTapTarget)
+                        .padding(.vertical, 6)
+                        .background(Theme.surfaceSunken)
+                        .foregroundStyle(Theme.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .disabled(isWorking)
+
+                Text("The image is read on this iPhone and is never uploaded.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if view.providers?.contains("apple") == true {
                 Text("Apple iCloud needs an app-specific password, which you'll be asked for during setup.")
                     .font(.caption)
@@ -179,7 +218,9 @@ struct InviteView: View {
                 .foregroundStyle(Theme.primary)
                 .accessibilityAddTraits(.isHeader)
 
-            Text("Your calendar is connected. We'll let you know as soon as there's a time to confirm.")
+            Text(view.viewer.manualSchedule == true && view.viewer.connection == nil
+                 ? "Your reviewed busy times are included. We'll let you know as soon as there's a time to confirm."
+                 : "Your calendar is connected. We'll let you know as soon as there's a time to confirm.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -206,8 +247,17 @@ struct InviteView: View {
                 }
             }
 
+            if view.viewer.manualSchedule == true && view.viewer.role == "attendee" {
+                Button("Update scanned schedule") {
+                    showScheduleImport = true
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accentA)
+                .frame(minHeight: Theme.minTapTarget)
+            }
+
             if let others = view.others {
-                Text("\(others.joined) of \(others.total + 1) people connected so far.")
+                Text("\(others.joined) of \(others.total + 1) people ready so far.")
                     .font(.footnote)
                     .foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)

@@ -13,6 +13,7 @@ import {
   getActiveBroker,
   getBroker,
   grantToConnectionFields,
+  type BrokerId,
   type CalendarBroker,
   type CalendarGrant,
   type CalendarProviderId,
@@ -88,7 +89,7 @@ export interface StartedConnection {
 export async function startConnection(
   input: StartConnectionInput
 ): Promise<StartedConnection> {
-  const broker = getActiveBroker();
+  const broker = getActiveBroker(input.provider);
   const needsWriteAccess = input.participant.role === "organizer";
   const fallbackReturn = `/invite/${input.participant.inviteToken}`;
 
@@ -97,7 +98,9 @@ export async function startConnection(
   const { state } = await createOAuthState({
     participantId: input.participant.id,
     eventId: input.participant.eventId,
-    provider: input.provider ?? "auto",
+    // Persist the broker, not just the provider choice. The callback may run
+    // in a different server process and must resume with the same adapter.
+    provider: broker.id,
     returnTo: safeReturnTo(input.returnTo ?? null, fallbackReturn),
     clientKind: input.clientKind ?? "web",
   });
@@ -191,7 +194,18 @@ export async function handleCallback(
     };
   }
 
-  const broker = getActiveBroker();
+  let broker: CalendarBroker;
+  try {
+    broker = getBroker(state.provider as BrokerId);
+    if (!broker.isConfigured()) throw new Error("Broker credentials are missing");
+  } catch (error) {
+    console.error("Calendar callback broker is unavailable:", error);
+    return {
+      ok: false,
+      redirectTo: appendParam(returnTo, "error", "provider_error"),
+      reason: "provider_error",
+    };
+  }
   let grant: CalendarGrant;
   try {
     grant = await broker.completeAuthorization({
@@ -323,7 +337,9 @@ export async function disconnect(participantId: string): Promise<boolean> {
   if (!connection) return false;
 
   try {
-    await getBroker(connection.broker as never).revoke(connectionToGrant(connection));
+    await getBroker(connection.broker as BrokerId).revoke(
+      connectionToGrant(connection)
+    );
   } catch {
     // The local record is removed regardless.
   }

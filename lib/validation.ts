@@ -6,6 +6,11 @@ import {
   parseWorkingHours,
 } from "./time";
 import { normalizeEmail } from "./oauth-state";
+import {
+  WEEKLY_SLOT_COUNT,
+  WEEKLY_SLOT_STATES,
+  hasOpenWeeklyRun,
+} from "./weekly-availability";
 
 /**
  * Hard server-side caps.
@@ -46,7 +51,10 @@ export const CreateEventSchema = z
     workingHoursStart: z.string(),
     workingHoursEnd: z.string(),
     excludeWeekends: z.boolean().default(true),
-
+    weeklyAvailability: z
+      .array(z.enum(WEEKLY_SLOT_STATES))
+      .length(WEEKLY_SLOT_COUNT)
+      .optional(),
     participantEmails: z
       .array(emailSchema)
       .min(1, "Invite at least one person")
@@ -67,19 +75,24 @@ export const CreateEventSchema = z
     website: z.string().max(200).optional(),
   })
   .superRefine((data, ctx) => {
-    const span = localDateDifferenceInDays(data.startDate, data.endDate);
-    if (span < 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["endDate"],
-        message: "The latest date must not be before the earliest date",
-      });
-    } else if (span + 1 > MAX_RANGE_DAYS) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["endDate"],
-        message: `Choose a window of at most ${MAX_RANGE_DAYS} days`,
-      });
+    // Zod still runs object refinements when individual fields are invalid.
+    // Keep malformed dates as ordinary validation errors instead of letting
+    // the range helper throw and turning a bad request into a 500 response.
+    if (isValidLocalDate(data.startDate) && isValidLocalDate(data.endDate)) {
+      const span = localDateDifferenceInDays(data.startDate, data.endDate);
+      if (span < 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["endDate"],
+          message: "The latest date must not be before the earliest date",
+        });
+      } else if (span + 1 > MAX_RANGE_DAYS) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["endDate"],
+          message: `Choose a window of at most ${MAX_RANGE_DAYS} days`,
+        });
+      }
     }
 
     try {
@@ -99,6 +112,17 @@ export const CreateEventSchema = z
         code: "custom",
         path: ["workingHoursEnd"],
         message: error instanceof Error ? error.message : "Invalid working hours",
+      });
+    }
+
+    if (
+      data.weeklyAvailability &&
+      !hasOpenWeeklyRun(data.weeklyAvailability, data.durationMinutes)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["weeklyAvailability"],
+        message: "Leave at least one open stretch long enough for this plan",
       });
     }
 

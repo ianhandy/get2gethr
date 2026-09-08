@@ -233,6 +233,17 @@ export const MIGRATIONS: Migration[] = [
       ]);
     },
   },
+  {
+    id: "003_weekly_availability",
+    up: async (client) => {
+      await addColumnIfMissing(
+        client,
+        "events",
+        "weekly_availability_json",
+        "TEXT"
+      );
+    },
+  },
 ];
 
 /** Applies any migration not yet recorded. Throws on the first failure. */

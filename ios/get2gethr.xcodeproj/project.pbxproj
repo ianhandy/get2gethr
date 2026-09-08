@@ -21,6 +21,8 @@
 		A10012 /* StatusBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20012; };
 		A10013 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20013; };
 		A10014 /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20014; };
+		A10015 /* ScheduleImageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20016; };
+		A10016 /* ScheduleImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20017; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +41,8 @@
 		A20013 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		A20014 /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLink.swift; sourceTree = "<group>"; };
 		A20015 /* get2gethr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = get2gethr.entitlements; sourceTree = "<group>"; };
+		A20016 /* ScheduleImageReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImageReader.swift; sourceTree = "<group>"; };
+		A20017 /* ScheduleImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportView.swift; sourceTree = "<group>"; };
 		A30001 /* get2gethr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = get2gethr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -91,6 +95,7 @@
 			children = (
 				A20004 /* APIClient.swift */,
 				A20014 /* DeepLink.swift */,
+				A20016 /* ScheduleImageReader.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -110,6 +115,7 @@
 				A20007 /* EventDashboardView.swift */,
 				A20008 /* InviteView.swift */,
 				A20009 /* SlotConfirmView.swift */,
+				A20017 /* ScheduleImportView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -213,6 +219,8 @@
 				A10010 /* Theme.swift in Sources */,
 				A10011 /* ParticipantChipField.swift in Sources */,
 				A10012 /* StatusBanner.swift in Sources */,
+				A10015 /* ScheduleImageReader.swift in Sources */,
+				A10016 /* ScheduleImportView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -314,7 +322,7 @@
 				DEVELOPMENT_TEAM = X5BKD97T2F;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				GET2GETHR_BASE_URL = "https://get2gethr.app";
+				GET2GETHR_BASE_URL = "https://finda.day";
 				INFOPLIST_FILE = get2gethr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

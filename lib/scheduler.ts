@@ -15,12 +15,15 @@ import {
 } from "./db/schema";
 import { computeCandidateSlots, isSlotStillFree, type Interval } from "./availability";
 import { localDateRangeToUtcBounds } from "./time";
+import { parseManualIntervals } from "./manual-schedule";
 import {
   CalendarAuthorizationError,
-  connectionToGrant,
   getBroker,
+  type BrokerId,
   type CalendarEventAttendee,
 } from "./calendar";
+import { freshGrantForConnection } from "./calendar/credentials";
+import { parseWeeklyAvailability } from "./weekly-availability";
 import {
   confirmationEmail,
   noSlotsEmail,
@@ -89,10 +92,13 @@ export function activeParticipants(context: EventContext): Participant[] {
   return context.participants.filter((p) => p.status !== "removed");
 }
 
-/** Participants whose calendars contribute availability. */
+/** Participants whose connected calendar or reviewed manual schedule contributes. */
 export function contributingParticipants(context: EventContext): Participant[] {
   return activeParticipants(context).filter(
-    (p) => p.status === "joined" && context.connections.get(p.id)?.status === "connected"
+    (p) =>
+      p.status === "joined" &&
+      (context.connections.get(p.id)?.status === "connected" ||
+        p.availabilityJson !== null)
   );
 }
 
@@ -125,10 +131,18 @@ export async function fetchBusy(
   const results = await Promise.all(
     people.map(async (person) => {
       const connection = context.connections.get(person.id);
-      if (!connection) return { person, busy: [] as Interval[] };
+      if (!connection || connection.status !== "connected") {
+        if (person.availabilityJson === null) {
+          return { person, error: new Error("No availability source") };
+        }
+        const manual = parseManualIntervals(person.availabilityJson);
+        return manual
+          ? { person, busy: manual }
+          : { person, error: new Error("Invalid manual availability") };
+      }
       try {
-        const broker = getBroker(connection.broker as never);
-        const busy = await broker.getFreeBusy(connectionToGrant(connection), {
+        const broker = getBroker(connection.broker as BrokerId);
+        const busy = await broker.getFreeBusy(await freshGrantForConnection(connection), {
           startMs,
           endMs,
         });
@@ -240,6 +254,9 @@ export async function advanceEvent(eventId: string): Promise<void> {
     workingHoursStart: refreshed.event.workingHoursStart,
     workingHoursEnd: refreshed.event.workingHoursEnd,
     excludeWeekends: refreshed.event.excludeWeekends,
+    weeklyAvailability: parseWeeklyAvailability(
+      refreshed.event.weeklyAvailabilityJson
+    ),
     busyByParticipant: busy.busyByParticipant,
     // Never propose a time that has already passed.
     notBeforeMs: Date.now(),
@@ -438,28 +455,37 @@ export async function writeConfirmedMeeting(eventId: string): Promise<void> {
   let calendarWritten = false;
   let writeError: string | null = null;
 
-  // `primary` is a real alias only when talking to Google directly. Broker
-  // calendar ids are opaque, so guessing one there would write the meeting
-  // nowhere and report success.
+  // Direct providers support a default-calendar route. Broker calendar ids are
+  // opaque, so guessing one there would write the meeting nowhere and report
+  // success.
   const destination =
     organizerConnection?.destinationCalendarId ??
-    (organizerConnection?.broker === "google" ? "primary" : null);
+    (organizerConnection?.broker === "google" ||
+    organizerConnection?.broker === "microsoft"
+      ? "primary"
+      : null);
 
   if (organizerConnection && destination && organizerConnection.status === "connected") {
     try {
-      const broker = getBroker(organizerConnection.broker as never);
-      const result = await broker.createEvent(connectionToGrant(organizerConnection), {
-        // Stable across every retry of this event+slot pair.
-        idempotencyKey: `get2gethr-${event.id}-${slot.id}`,
-        calendarId: destination,
-        title: event.title,
-        description: event.description ?? undefined,
-        startMs: interval[0],
-        endMs: interval[1],
-        timezone: event.timezone,
-        organizer: { email: event.organizerEmail, displayName: event.organizerName },
-        attendees,
-      });
+      const broker = getBroker(organizerConnection.broker as BrokerId);
+      const result = await broker.createEvent(
+        await freshGrantForConnection(organizerConnection),
+        {
+          // Stable across every retry of this event+slot pair.
+          idempotencyKey: `get2gethr-${event.id}-${slot.id}`,
+          calendarId: destination,
+          title: event.title,
+          description: event.description ?? undefined,
+          startMs: interval[0],
+          endMs: interval[1],
+          timezone: event.timezone,
+          organizer: {
+            email: event.organizerEmail,
+            displayName: event.organizerName,
+          },
+          attendees,
+        }
+      );
       calendarWritten = true;
       await db
         .update(events)

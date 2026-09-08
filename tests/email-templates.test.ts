@@ -42,7 +42,7 @@ describe("SES MIME message", () => {
             },
           ],
         },
-        "get2gethr <hello@get2gethr.app>"
+        "get2gethr <hello@get2gethr.com>"
       )
     ).toString("utf8");
 
@@ -61,7 +61,7 @@ describe("SES MIME message", () => {
           text: "Hello",
           html: "<p>Hello</p>",
         },
-        "get2gethr <hello@get2gethr.app>"
+        "get2gethr <hello@get2gethr.com>"
       )
     ).toString("utf8");
 
@@ -85,8 +85,8 @@ describe("escapeHtml", () => {
 
 describe("escapeUrl", () => {
   it("passes through http and https", () => {
-    expect(escapeUrl("https://get2gethr.app/invite/abc")).toBe(
-      "https://get2gethr.app/invite/abc"
+    expect(escapeUrl("https://finda.day/invite/abc")).toBe(
+      "https://finda.day/invite/abc"
     );
   });
 

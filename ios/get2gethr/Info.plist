@@ -36,6 +36,9 @@
 	<key>GET2GETHR_BASE_URL</key>
 	<string>$(GET2GETHR_BASE_URL)</string>
 
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of your schedule so busy times can be read on this iPhone.</string>
+
 	<!--
 	  Allows plain HTTP to a development server on the local machine.
 

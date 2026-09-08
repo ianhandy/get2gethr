@@ -15,12 +15,11 @@ export type CalendarProviderId =
 /**
  * How get2gethr reaches a calendar.
  *
- * `google` talks to Google directly and is the only path that works without a
- * vendor contract. `cronofy` is the broker the audit recommends: one
- * integration covering Google, Microsoft, Apple, and Exchange. Both satisfy the
- * same interface, so choosing between them is configuration, not a rewrite.
+ * `google` and `microsoft` talk to their providers directly without a vendor
+ * contract. `cronofy` remains an optional broker covering Google, Microsoft,
+ * Apple, and Exchange. Every route satisfies the same interface.
  */
-export type BrokerId = "google" | "cronofy" | "fake";
+export type BrokerId = "google" | "microsoft" | "cronofy" | "fake";
 
 /** A durable handle to someone's calendar access, as stored in the database. */
 export interface CalendarGrant {
@@ -130,6 +129,12 @@ export interface CalendarBroker {
 
   /** False when the deployment has no credentials for this broker. */
   isConfigured(): boolean;
+
+  /**
+   * Refreshes expiring direct-provider credentials before an API call. The
+   * connection wrapper persists rotated refresh tokens when this is present.
+   */
+  refreshGrant?(grant: CalendarGrant): Promise<CalendarGrant>;
 
   buildAuthorizationUrl(
     request: AuthorizationRequest
